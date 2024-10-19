@@ -1,0 +1,35 @@
+[project]
+name = "kriss_matcher"
+version = "0.0.1"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "numpy >= 1.26.4",
+  "pip",
+]
+[build-system]
+requires = ["maturin[patchelf]>=1,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+profile = "release"
+frozen = false
+locked = false
+
+[project.optional-dependencies]
+tests = [
+    "pytest",
+    "pytest-sugar",
+]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = ""
+testpaths = [
+    "tests",
+]

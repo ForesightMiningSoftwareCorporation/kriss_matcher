@@ -4,6 +4,8 @@ use nalgebra_lapack::SVD;
 
 use crate::{kdtree::KdTreePointCloud, point::Point3D, point_cloud::PointCloud};
 
+type NormalEstimationResult = (Vec<Option<Vector3<f64>>>, Vec<Option<Vec<u64>>>);
+
 pub fn estimate_normals_and_get_neigbours_indexes(
     point_cloud: &PointCloud,
     kdtree: &KdTreePointCloud,
@@ -11,8 +13,8 @@ pub fn estimate_normals_and_get_neigbours_indexes(
     //       then with radius_normal
     radius: f64,
     min_neigbours: usize,
-    min_linearity: f64 // = 0.99,
-) -> (Vec<Option<Vector3<f64>>>, Vec<Option<Vec<u64>>>) {
+    min_linearity: f64, // = 0.99,
+) -> NormalEstimationResult {
     let mut normals = vec![None; point_cloud.len()];
     let mut all_neigbours_indexes = vec![None; point_cloud.len()];
     for (i, point) in point_cloud.points.iter().enumerate() {
@@ -50,7 +52,6 @@ pub fn estimate_normals_and_get_neigbours_indexes(
                     continue;
                 }
 
-
                 let v_t = svd.vt;
                 let normal = Vector3::new(v_t[(2, 0)], v_t[(2, 1)], v_t[(2, 2)]).normalize();
                 normals[i] = Some(normal);
@@ -64,7 +65,7 @@ pub fn estimate_normals_and_get_neigbours_indexes(
     (normals, all_neigbours_indexes)
 }
 
-fn calculate_centroid(point_cloud: &PointCloud, indices: &Vec<u64>) -> Point3D {
+fn calculate_centroid(point_cloud: &PointCloud, indices: &[u64]) -> Point3D {
     let mut centroid = Point3D::zero();
     let n = indices.len() as f64;
     for index in indices.iter() {
@@ -98,7 +99,13 @@ mod tests {
         let point_cloud = PointCloud::from_points(points);
         let kdtree = KdTreePointCloud::new(&point_cloud);
         let min_linearity = 0.99;
-        let (normals, _) = estimate_normals_and_get_neigbours_indexes(&point_cloud, &kdtree, 1.5, 3, min_linearity);
+        let (normals, _) = estimate_normals_and_get_neigbours_indexes(
+            &point_cloud,
+            &kdtree,
+            1.5,
+            3,
+            min_linearity,
+        );
 
         for possible_normal in normals {
             if let Some(normal) = possible_normal {
@@ -120,10 +127,15 @@ mod tests {
         let min_neigbours = 3;
         let min_linearity = 0.3;
 
-        let (normals, _) = estimate_normals_and_get_neigbours_indexes(&point_cloud, &kdtree, radius, min_neigbours, min_linearity);
+        let (normals, _) = estimate_normals_and_get_neigbours_indexes(
+            &point_cloud,
+            &kdtree,
+            radius,
+            min_neigbours,
+            min_linearity,
+        );
         assert_eq!(normals.len(), 2);
         assert_eq!(normals[0], None);
         assert_eq!(normals[1], None);
-
     }
 }

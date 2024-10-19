@@ -1,3 +1,4 @@
+use log::debug;
 use petgraph::{Graph, Undirected};
 use rustworkx_core::connectivity::core_number;
 
@@ -13,6 +14,7 @@ pub fn correspondance_graph_pruning(
     //       petgraph supports it: https://web.archive.org/web/20240824094053/
     //       https://docs.rs/petgraph/latest/petgraph/csr/struct.Csr.html
     let mut correspondance_graph = Graph::<(u64, u64), (), Undirected>::new_undirected();
+    debug!("Correspondances: {:?}", correspondance);
     let node_indexes: Vec<_> = correspondance
         .iter()
         .map(|&corr| correspondance_graph.add_node(corr))
@@ -39,11 +41,57 @@ pub fn correspondance_graph_pruning(
     if let Some(max_core_number) = &cores.values().max() {
         for (node_id, _) in cores.iter().filter(|(_, v)| v == max_core_number) {
             if let Some(&filtered_correspondance) = &correspondance_graph.node_weight(*node_id) {
-                filtered_correspondances.push(filtered_correspondance.clone());
+                filtered_correspondances.push(filtered_correspondance);
             }
         }
     } else {
         panic!("No cores where found.")
     }
     filtered_correspondances
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::point::Point3D;
+
+    use super::*;
+
+    #[test]
+    fn test_ok() {
+        let source_points = vec![
+            Point3D::new(0.0, 0.0, 0.0),
+            Point3D::new(1.0, 0.0, 0.0),
+            Point3D::new(2.0, 0.0, 0.0),
+        ];
+        let target_points = vec![
+            Point3D::new(0.0, 0.0, 0.0),
+            Point3D::new(1.0, 0.0, 0.0),
+            Point3D::new(2.0, 0.0, 0.0),
+        ];
+        let source = PointCloud {
+            points: source_points,
+        };
+        let target = PointCloud {
+            points: target_points,
+        };
+
+        let correspondences = vec![(0u64, 0u64), (1u64, 1u64), (2u64, 2u64)];
+        let distance_noise_threshold = 0.1;
+
+        let filtered = correspondance_graph_pruning(
+            &correspondences,
+            &source,
+            &target,
+            distance_noise_threshold,
+        );
+        assert_eq!(
+            filtered.len(),
+            3,
+            "Expected all correspondences to be included."
+        );
+        assert_eq!(
+            filtered, correspondences,
+            "Filtered correspondences should match the input."
+        );
+    }
 }

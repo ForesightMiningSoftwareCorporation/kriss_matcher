@@ -1,5 +1,5 @@
 [package]
-name = "kriss"
+name = "kriss_matcher"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,8 +9,16 @@ kiddo = "4.2.1"
 log = "0.4.22"
 nalgebra = "0.33.0"
 nalgebra-lapack = { version = "0.25.0"}
+numpy = { version = "0.22.0", features = ["nalgebra"] }
 petgraph = "0.6.5"
+pyo3 = { version = "0.22.4", features = ["extension-module"] }
+pyo3-stub-gen = "0.6.0"
 rustworkx-core = "0.15.1"
 
 [dev-dependencies]
 all_asserts = "2.3.1"
+rand = "0.8.5"
+
+[lib]
+name = "kriss_matcher"
+crate-type = ["cdylib"]

@@ -4,6 +4,12 @@ pub struct PointCloud {
     pub points: Vec<Point3D>,
 }
 
+impl Default for PointCloud {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PointCloud {
     pub fn new() -> Self {
         PointCloud { points: Vec::new() }
@@ -15,5 +21,9 @@ impl PointCloud {
 
     pub fn len(&self) -> usize {
         self.points.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
     }
 }

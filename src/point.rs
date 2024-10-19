@@ -22,4 +22,8 @@ impl Point3D {
     pub fn to_vec(&self) -> [f64; 3] {
         [self.x, self.y, self.z]
     }
+
+    pub fn from_vec(x_y_z: &[f64; 3]) -> Self {
+        Self::new(x_y_z[0], x_y_z[1], x_y_z[2])
+    }
 }
