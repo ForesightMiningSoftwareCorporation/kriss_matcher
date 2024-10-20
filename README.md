@@ -4,6 +4,10 @@ The implementation of the paper [KISS-Matcher: Fast and Robust Point Cloud Regis
 
 ![matching](./.docs/kriss_matcher.png)
 
+## Disclaimer
+
+This project is my first complete implementation in Rust, created out of curiosity and a desire to learn the language while implementing the concepts from the paper. It was developed over a weekend, so it may not be production-ready. Feedback and contributions are welcome!
+
 ## Differences from the Original Paper
 
 This implementation has some differences:
@@ -43,13 +47,6 @@ Also covers "Appendix.I. Detailed Explanation of Faster-PFH".
 ### Section III.E. Graduated Non-Convexity-Based Non-Minimal Solver
 
 * Optimal Rotation and Translation Estimation: `gnc_solver.rs`
-
-
-
-
-## Disclaimer
-
-This project is my first complete implementation in Rust, created out of curiosity and a desire to learn the language while implementing the concepts from the paper. It was developed over a weekend, so it may not be production-ready. Feedback and contributions are welcome!
 
 ## Usage
 
