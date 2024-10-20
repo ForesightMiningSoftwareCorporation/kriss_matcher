@@ -43,8 +43,14 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-${{ matrix.python-version }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Run cargo clippy
-        run: cargo clippy --all -- -D warnings
+      - uses: actions/cache@v2
+        if: matrix.os == 'windows-latest'
+        with:
+          path: ./vcpkg
+          key: vcpkg-openblas
+
+      - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
 
       - name: Install maturin on Linux (with patchelf)
         if: matrix.os == 'ubuntu-latest'
@@ -62,16 +68,44 @@ jobs:
 
       - name: Install OpenBLAS on macOS
         if: matrix.os == 'macos-latest'
-        run: brew install openblas gfortran
+        run: brew install openblas
 
-      # - name: Set up OpenBLAS on Windows
-      #   if: matrix.os == 'windows-latest'
-      #   run: |
-      #     curl -L -o openblas.zip https://github.com/xianyi/OpenBLAS/releases/download/v0.3.21/OpenBLAS-0.3.21-x64.zip
-      #     tar -xf openblas.zip -C C:/openblas
-      #     setx /M OPENBLAS_DIR "C:\openblas"
-      #     setx /M PATH "%PATH%;%OPENBLAS_DIR%\bin"
-      #   shell: cmd
+      - name: Set up vcpkg
+        if: matrix.os == 'windows-latest'
+        run: |
+          git clone https://github.com/Microsoft/vcpkg.git --depth 1
+          cd vcpkg
+          .\bootstrap-vcpkg.bat
+        shell: cmd
+
+      - name: Install OpenBLAS by vcpkg
+        if: matrix.os == 'windows-latest'
+        run: |
+          ./vcpkg/vcpkg.exe install openblas:x64-windows-static
+
+      - name: Set VCPKG_ROOT environment variable on Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          setx VCPKG_ROOT "%cd%\vcpkg"
+          setx PATH "%PATH%;%cd%\vcpkg\installed\x64-windows\bin"
+        shell: cmd
+
+      - name: Setup GNU Fortran
+        if: matrix.os != 'ubuntu-latest'
+        uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: gcc
+          version: 13
+
+      - name: Run cargo tests
+        run: cargo test
+        env:
+          OPENBLAS_DIR: ${{ matrix.os == 'windows-latest' && '%VCPKG_ROOT%/installed/x64-windows' || '/usr/local/opt/openblas' }}
+
+      - name: Run cargo clippy
+        run: cargo clippy --all -- -D warnings
+        env:
+          OPENBLAS_DIR: ${{ matrix.os == 'windows-latest' && '%VCPKG_ROOT%/installed/x64-windows' || '/usr/local/opt/openblas' }}
 
       - name: Build wheels with maturin on macOS
         if: matrix.os == 'macos-latest'
@@ -87,17 +121,12 @@ jobs:
         env:
           OPENBLAS_DIR: /usr/lib/x86_64-linux-gnu
 
-      # - name: Build wheels with maturin on Windows
-      #   if: matrix.os == 'windows-latest'
-      #   run: |
-      #     maturin build --release --out dist
-      #   env:
-      #     OPENBLAS_DIR: C:\openblas
-
-      - name: Run cargo tests
-        run: cargo test
+      - name: Build wheels with maturin on Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+          maturin build --release --out dist
         env:
-          OPENBLAS_DIR: ${{ matrix.os == 'windows-latest' && 'C:/openblas' || '/usr/local/opt/openblas' }}
+          OPENBLAS_DIR: "%VCPKG_ROOT%/installed/x64-windows"
 
       - name: Install the built package
         run: |
