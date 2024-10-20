@@ -113,6 +113,8 @@ jobs:
           maturin build --release --out dist
         env:
           OPENBLAS_DIR: /usr/local/opt/openblas
+          CARGO_FEATURES: "--no-default-features --features accelerate"
+
 
       - name: Build wheels with maturin on Linux
         if: matrix.os == 'ubuntu-latest'

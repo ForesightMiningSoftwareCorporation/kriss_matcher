@@ -17,6 +17,7 @@ build-backend = "maturin"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
+no-default-features = false
 profile = "release"
 frozen = false
 locked = false
