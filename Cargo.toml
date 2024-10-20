@@ -9,9 +9,6 @@ kiddo = "4.2.1"
 log = "0.4.22"
 nalgebra = "0.33.0"
 
-nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["openblas"] }
-lapack-src = { version = "0.9", features = ["openblas"] }
-
 numpy = { version = "0.22.0", features = ["nalgebra"] }
 petgraph = "0.6.5"
 pyo3 = { version = "0.22.4", features = ["extension-module"] }
@@ -26,8 +23,14 @@ rand = "0.8.5"
 name = "kriss_matcher"
 crate-type = ["cdylib"]
 
+[target.'cfg(target_os = "linux")'.dependencies]
+nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["openblas"] }
+openblas-src = { version = "0.10.9", default-features = false, features = ["static"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["accelerate"] }
 
 [target.'cfg(target_os="windows")'.build-dependencies]
+nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["openblas"] }
+openblas-src = { version = "0.10.9", default-features = false, features = ["static"] }
 vcpkg = "0.2"
