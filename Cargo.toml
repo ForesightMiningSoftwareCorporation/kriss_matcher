@@ -31,6 +31,8 @@ openblas-src = { version = "0.10.9", default-features = false, features = ["stat
 nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["accelerate"] }
 
 [target.'cfg(target_os="windows")'.build-dependencies]
+vcpkg = "0.2"
+
+[target.'cfg(target_os="windows")'.dependencies]
 nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["openblas"] }
 openblas-src = { version = "0.10.9", default-features = false, features = ["static"] }
-vcpkg = "0.2"
