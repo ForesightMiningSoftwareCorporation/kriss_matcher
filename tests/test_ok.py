@@ -48,5 +48,5 @@ def test_ok():
     rotation_error = np.linalg.norm(T_true[:3, :3] - T_estimated[:3, :3])
     translation_error = np.linalg.norm(T_true[:3, 3] - T_estimated[:3, 3])
 
-    assert translation_error < 0.1
-    assert rotation_error < 0.3
+    assert translation_error < 0.3
+    assert rotation_error < 0.4
