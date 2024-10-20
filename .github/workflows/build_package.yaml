@@ -43,11 +43,13 @@ jobs:
             ~/.cargo/git
           key: ${{ runner.os }}-cargo-${{ matrix.python-version }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - uses: actions/cache@v2
+      - uses: actions/cache@v4
         if: matrix.os == 'windows-latest'
         with:
           path: ./vcpkg
           key: vcpkg-openblas
+          save-always: true
+
 
       - uses: Swatinem/rust-cache@v2
         continue-on-error: true
@@ -94,11 +96,14 @@ jobs:
         run: cargo test
         env:
           OPENBLAS_DIR: ${{ matrix.os == 'windows-latest' && '%VCPKG_ROOT%/installed/x64-windows' || '/usr/local/opt/openblas' }}
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+
 
       - name: Run cargo clippy
         run: cargo clippy --all -- -D warnings
         env:
           OPENBLAS_DIR: ${{ matrix.os == 'windows-latest' && '%VCPKG_ROOT%/installed/x64-windows' || '/usr/local/opt/openblas' }}
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
       - name: Build wheels with maturin on macOS
         if: matrix.os == 'macos-latest'
@@ -122,6 +127,7 @@ jobs:
           maturin build --release --out dist
         env:
           OPENBLAS_DIR: "%VCPKG_ROOT%/installed/x64-windows"
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
 
       - name: Install the built package
         run: |
