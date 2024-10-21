@@ -154,30 +154,32 @@ jobs:
   release:
     name: Release and Publish
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
+    if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
     needs: build
     permissions:
       id-token: write
       contents: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v4
-
-      - name: Publish to PyPI
-        uses: PyO3/maturin-action@v1
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        with:
-          command: upload
-          args: --non-interactive --skip-existing wheels-*/*
-
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: dist
+
+      - name: Upload wheels to PyPI
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          pip install twine
+          twine upload dist/**/*.whl --skip-existing
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
 
       - name: cargo-release Cache
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         id: cargo_release_cache
         uses: actions/cache@v4
         with:
@@ -185,17 +187,18 @@ jobs:
           key: ${{ runner.os }}-cargo-release
 
       - name: Install cargo-release
+        if: ${{ steps.cargo_release_cache.outputs.cache-hit != 'true' && startsWith(github.ref, 'refs/tags/v') }}
         run: cargo install cargo-release
-        if: steps.cargo_release_cache.outputs.cache-hit != 'true'
 
       - name: cargo login
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: cargo login ${{ secrets.CRATES_IO_API_TOKEN }}
 
       - name: Publish crate to crates.io
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
         run: |
           cargo release publish \
             --workspace \
             --all-features \
-            --allow-branch HEAD \
             --no-confirm \
             --execute
