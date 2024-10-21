@@ -120,7 +120,8 @@ jobs:
       - name: Build wheels with maturin on Linux
         if: matrix.os == 'ubuntu-latest'
         run: |
-          maturin build --release --out dist
+          maturin build --compatibility manylinux2014 --release --auditwheel repair --out dist
+          maturin build --release --auditwheel repair --out dist
         env:
           OPENBLAS_DIR: /usr/lib/x86_64-linux-gnu
 
