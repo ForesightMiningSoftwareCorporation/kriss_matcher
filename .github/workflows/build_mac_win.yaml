@@ -178,9 +178,12 @@ jobs:
 
       - name: Publish crate to crates.io
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        run: |
-          cargo release publish \
+        run: |-
+          cargo release \
+            publish \
             --workspace \
             --all-features \
+            --allow-branch HEAD \
             --no-confirm \
+            --no-verify \
             --execute
