@@ -3,7 +3,7 @@
 #
 #    maturin generate-ci --platform manylinux --pytest github
 #
-name: CI
+name: build manylinux wheels
 
 on:
   push:
@@ -26,14 +26,19 @@ jobs:
         platform:
           - runner: ubuntu-latest
             target: x86_64
+            before_script: "yum -y install openblas-devel openssl-devel"
           - runner: ubuntu-latest
             target: aarch64
+            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
           - runner: ubuntu-latest
             target: armv7
+            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
           - runner: ubuntu-latest
             target: s390x
+            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
           - runner: ubuntu-latest
             target: ppc64le
+            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +52,7 @@ jobs:
           args: --release --out dist --find-interpreter
           sccache: 'true'
           manylinux: auto
-          before-script-linux: yum -y install openblas-devel openssl-devel
+          before-script-linux: ${{ matrix.platform.before_script }}
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
