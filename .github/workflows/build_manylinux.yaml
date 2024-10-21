@@ -27,18 +27,18 @@ jobs:
           - runner: ubuntu-latest
             target: x86_64
             before_script: "yum -y install openblas-devel openssl-devel"
-          - runner: ubuntu-latest
-            target: aarch64
-            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
-          - runner: ubuntu-latest
-            target: armv7
-            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
-          - runner: ubuntu-latest
-            target: s390x
-            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
-          - runner: ubuntu-latest
-            target: ppc64le
-            before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config"
+          # - runner: ubuntu-latest
+          #   target: aarch64
+          #   before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config gfortran"
+          # - runner: ubuntu-latest
+          #   target: armv7
+          #   before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config gfortran"
+          # - runner: ubuntu-latest
+          #   target: s390x
+          #   before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config gfortran"
+          # - runner: ubuntu-latest
+          #   target: ppc64le
+          #   before_script: "apt-get update && apt-get install -y libopenblas-dev libssl-dev openssl pkg-config gfortran"
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
