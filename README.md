@@ -4,6 +4,23 @@ The implementation of the paper [KISS-Matcher: Fast and Robust Point Cloud Regis
 
 ![matching](./.docs/kriss_matcher.png)
 
+<!-- markdown-toc start - Don't edit this section. Run M-x markdown-toc-refresh-toc -->
+**Table of Contents**
+
+- [KRISS-Matcher: Rust/Python implementation of KISS-Matcher](#kriss-matcher-rustpython-implementation-of-kiss-matcher)
+    - [Disclaimer](#disclaimer)
+    - [Differences from the Original Paper](#differences-from-the-original-paper)
+    - [Code Structure and Correspondence to Paper Sections](#code-structure-and-correspondence-to-paper-sections)
+        - [Section III.C. Faster-PFH: Boosting FPFH Speed](#section-iiic-faster-pfh-boosting-fpfh-speed)
+        - [Section III.D. k-Core-Based Graph-Theoretic Outlier Pruning](#section-iiid-k-core-based-graph-theoretic-outlier-pruning)
+        - [Section III.E. Graduated Non-Convexity-Based Non-Minimal Solver](#section-iiie-graduated-non-convexity-based-non-minimal-solver)
+    - [Usage](#usage)
+    - [Contributing](#contributing)
+    - [License](#license)
+
+<!-- markdown-toc end -->
+
+
 ## Disclaimer
 
 This project is my first complete implementation in Rust, created out of curiosity and a desire to learn the language while implementing the concepts from the paper. It was developed over a weekend, so it may not be production-ready. Feedback and contributions are welcome!
@@ -73,6 +90,27 @@ To run the example you can use:
 uv run --no-project --python=3.11 examples/example.py
 ```
 it will install all required dependencies.
+
+You can also refer to `kruss_matcher.pyi` to see the documentation:
+
+``` python
+def find_point_cloud_transformation(
+    source_points: np.ndarray, target_points: np.ndarray, voxel_size: float
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Finds the transformation (rotation and translation) between two point clouds.
+
+    Args:
+        source_points: A 2D numpy array of shape (n, 3), where n is the number of points.
+        target_points: A 2D numpy array of shape (n, 3), where n is the number of points.
+        voxel_size: A float representing the size of the voxel grid used in the transformation.
+
+    Returns:
+        A tuple of two numpy 2D arrays:
+            - The first array is the rotation matrix.
+            - The second array is the translation matrix.
+    """
+```
 
 ## Contributing
 
