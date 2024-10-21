@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12"]
-        os: [macos-latest, ubuntu-latest] # , windows-latest
+        os: [macos-latest] # , windows-latest
       fail-fast: false
 
     steps:
@@ -56,10 +56,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         continue-on-error: true
-
-      - name: Install maturin on Linux (with patchelf)
-        if: matrix.os == 'ubuntu-latest'
-        run: pip install maturin[patchelf]
 
       - name: Install maturin on non-linux (without patchelf)
         if: matrix.os != 'ubuntu-latest'
@@ -110,20 +106,6 @@ jobs:
           OPENBLAS_DIR: /usr/local/opt/openblas
           CARGO_FEATURES: "--no-default-features --features accelerate"
 
-      - name: Build wheels with maturin on Linux
-        uses: PyO3/maturin-action@v1
-        if: matrix.os == 'ubuntu-latest'
-        with:
-          command: build
-          manylinux: 2014/2_17
-          args: -i python${{ matrix.python-version }} --compatibility manylinux2014 --release --auditwheel repair --out dist
-          before-script-linux: "yum -y install openblas-devel openssl-devel"
-
-      # - name: Build wheels with maturin on Linux
-      #   uses: szobov/maturin-openblas-builder:0.0.2
-      #   if: matrix.os == 'ubuntu-latest'
-      #   run: |
-      #     build -i python${{ matrix.python-version }} --compatibility manylinux2014 --release --auditwheel repair --out dist
       - name: Build wheels with maturin on Windows
         if: matrix.os == 'windows-latest'
         run: |
