@@ -1,7 +1,14 @@
 [package]
 name = "kriss_matcher"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+authors = ["Sergei Zobov sergei@szobov.ru"]
+
+description = "Rust implementation of the paper 'KISS-Matcher: Fast and Robust Point Cloud Registration Revisited'"
+license = "Apache-2.0"
+repository = "https://github.com/szobov/kriss_matcher"
+homepage = "https://github.com/szobov/kriss_matcher"
+documentation = "https://github.com/szobov/kriss_matcher"
 
 [dependencies]
 env_logger = "0.11.5"
@@ -24,6 +31,7 @@ name = "kriss_matcher"
 crate-type = ["cdylib"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# nalgebra-lapack = { version = "0.25.0"}
 nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["openblas"] }
 openblas-src = { version = "0.10.9", default-features = false, features = ["static"] }
 
