@@ -163,6 +163,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
 
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@v1
+        env:
+          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        with:
+          command: upload
+          args: --non-interactive --skip-existing wheels-*/*
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -188,12 +199,3 @@ jobs:
             --allow-branch HEAD \
             --no-confirm \
             --execute
-
-      - name: Publish to PyPI
-        if: "startsWith(github.ref, 'refs/tags/')"
-        uses: PyO3/maturin-action@v1
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        with:
-          command: upload
-          args: --non-interactive --skip-existing wheels-*/*
