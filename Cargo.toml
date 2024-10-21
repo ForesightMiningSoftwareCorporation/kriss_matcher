@@ -2,7 +2,7 @@
 name = "kriss_matcher"
 version = "0.0.1"
 edition = "2021"
-authors = ["Sergei Zobov <sergei@szobov.ru>"]
+authors = ["Sergei Zobov <sergey@szobov.ru>"]
 
 description = "Rust implementation of the paper 'KISS-Matcher: Fast and Robust Point Cloud Registration Revisited'"
 license = "Apache-2.0"
