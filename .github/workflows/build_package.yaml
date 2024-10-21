@@ -65,12 +65,6 @@ jobs:
         if: matrix.os != 'ubuntu-latest'
         run: pip install maturin
 
-      - name: Install OpenBLAS on Linux
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenblas-dev
-
       - name: Install OpenBLAS on macOS
         if: matrix.os == 'macos-latest'
         run: brew install openblas
@@ -116,15 +110,20 @@ jobs:
           OPENBLAS_DIR: /usr/local/opt/openblas
           CARGO_FEATURES: "--no-default-features --features accelerate"
 
-
       - name: Build wheels with maturin on Linux
+        uses: PyO3/maturin-action@v1
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          maturin build --compatibility manylinux2014 --release --auditwheel repair --out dist
-          maturin build --release --auditwheel repair --out dist
-        env:
-          OPENBLAS_DIR: /usr/lib/x86_64-linux-gnu
+        with:
+          command: build
+          manylinux: 2014/2_17
+          args: -i python${{ matrix.python-version }} --compatibility manylinux2014 --release --auditwheel repair --out dist
+          before-script-linux: "yum -y install openblas-devel openssl-devel"
 
+      # - name: Build wheels with maturin on Linux
+      #   uses: szobov/maturin-openblas-builder:0.0.2
+      #   if: matrix.os == 'ubuntu-latest'
+      #   run: |
+      #     build -i python${{ matrix.python-version }} --compatibility manylinux2014 --release --auditwheel repair --out dist
       - name: Build wheels with maturin on Windows
         if: matrix.os == 'windows-latest'
         run: |
