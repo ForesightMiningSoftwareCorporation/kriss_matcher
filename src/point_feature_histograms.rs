@@ -1,10 +1,10 @@
-use nalgebra::Vector3;
+use nalgebra::{distance, Vector3};
 
-use crate::{constants::HISTOGRAM_NUM_BINS, point::Point3D, point_cloud::PointCloud};
+use crate::prelude::*;
 
 fn compute_features(
-    point_a: &Point3D,
-    point_b: &Point3D,
+    point_a: &Point,
+    point_b: &Point,
     normal_a: &Vector3<f64>,
     normal_b: &Vector3<f64>,
 ) -> [f64; 3] {
@@ -24,34 +24,32 @@ fn compute_features(
     [feature_1, feature_2, feature_3]
 }
 
-fn bin_features(features: &[f64; 3], num_bins: usize, histograms: &mut [f64]) {
+fn bin_features(features: &[f64; 3], histogram: &mut Histogram) {
     let epsilon = 1e-6;
 
     // atan2: [−π,π], cross product of normalized vectors: [-1, 1]
     let f_min = [-std::f64::consts::PI, -1.0, -1.0];
     let f_max = [std::f64::consts::PI, 1.0, 1.0];
 
-    let h = num_bins as f64;
-
     for (l, feature) in features.iter().enumerate() {
         let ratio = (feature - f_min[l]) / (f_max[l] + epsilon - f_min[l]);
         let clamped_ratio = ratio.clamp(0.0, 1.0 - epsilon);
-        let bin = (h * clamped_ratio).floor() as usize;
-        histograms[l * num_bins + bin] += 1.0;
+        let bin = (HISTOGRAM_NUM_BINS as f64 * clamped_ratio).floor() as usize;
+        histogram[l * HISTOGRAM_NUM_BINS + bin] += 1.0;
     }
 }
 
 pub fn get_fastest_point_feature_histogram(
-    point_cloud: &PointCloud,
+    points: &[Point],
     normals: &[Option<Vector3<f64>>],
     neigbours_indexes: &[Option<Vec<u64>>],
-) -> Vec<Option<Vec<f64>>> {
-    let mut spf_histograms = vec![None; point_cloud.len()];
-    for (index, point) in point_cloud.points.iter().enumerate() {
+) -> Vec<Option<Histogram>> {
+    let mut spf_histograms = vec![None; points.len()];
+    for (index, point) in points.iter().enumerate() {
         if normals[index].is_none() {
             continue;
         }
-        let mut histograms = vec![0f64; HISTOGRAM_NUM_BINS * 3];
+        let mut histogram: Histogram = [0.0_f64; HISTOGRAM_DIM];
         // TODO: handle case when not enough neigbors with normals
         if let Some(neigbour_indexes) = &neigbours_indexes[index] {
             for &neigbour_index in neigbour_indexes.iter() {
@@ -60,22 +58,22 @@ pub fn get_fastest_point_feature_histogram(
                 }
                 let features = compute_features(
                     point,
-                    &point_cloud.points[neigbour_index as usize],
+                    &points[neigbour_index as usize],
                     &normals[index].unwrap(),
                     &normals[neigbour_index as usize].unwrap(),
                 );
-                bin_features(&features, HISTOGRAM_NUM_BINS, &mut histograms);
+                bin_features(&features, &mut histogram);
             }
             let normalization_scale = 100.0 / neigbour_indexes.len() as f64;
-            for item in histograms.iter_mut() {
+            for item in histogram.iter_mut() {
                 *item *= normalization_scale
             }
-            spf_histograms[index] = Some(histograms);
+            spf_histograms[index] = Some(histogram);
         }
     }
 
-    let mut fpf_histograms = vec![None; point_cloud.len()];
-    for (index, point) in point_cloud.points.iter().enumerate() {
+    let mut fpf_histograms = vec![None; points.len()];
+    for (index, point) in points.iter().enumerate() {
         if normals[index].is_none() {
             continue;
         }
@@ -91,8 +89,8 @@ pub fn get_fastest_point_feature_histogram(
                 if normals[neigbour_index as usize].is_none() || index == neigbour_index as usize {
                     continue;
                 }
-                let neighbour_point = &point_cloud.points[neigbour_index as usize];
-                let distance = point.distance(neighbour_point);
+                let neighbor_point = &points[neigbour_index as usize];
+                let distance = distance(point, neighbor_point);
                 let inv_omega = 1.0 / (distance + 1e-6);
                 let neigbour_spf_histogram =
                     spf_histograms[neigbour_index as usize].as_ref().unwrap();
@@ -119,26 +117,22 @@ mod tests {
 
     #[test]
     fn test_ok() {
-        let point_cloud = PointCloud {
-            points: vec![
-                Point3D::new(0.0, 0.0, 0.0),
-                Point3D::new(1.0, 0.0, 0.0),
-                Point3D::new(0.0, 1.0, 0.0),
-            ],
-        };
+        let points = [
+            Point::new(0.0, 0.0, 0.0),
+            Point::new(1.0, 0.0, 0.0),
+            Point::new(0.0, 1.0, 0.0),
+        ];
         let normals = vec![
             Some(Vector3::new(0.0, 0.0, 1.0)),
             Some(Vector3::new(0.0, 0.0, 1.0)),
             Some(Vector3::new(0.0, 0.0, 1.0)),
         ];
         let neigbours_indexes = vec![Some(vec![1, 2]), Some(vec![1, 0]), Some(vec![0, 2])];
-        let histograms =
-            get_fastest_point_feature_histogram(&point_cloud, &normals, &neigbours_indexes);
+        let histograms = get_fastest_point_feature_histogram(&points, &normals, &neigbours_indexes);
         for optional_histogram in histograms.iter() {
             assert!(optional_histogram.is_some());
             let histogram = optional_histogram.as_ref().unwrap();
-            assert_eq!(histogram.len(), HISTOGRAM_NUM_BINS * 3);
-            assert_ne!(histogram, &vec![0.0_f64; HISTOGRAM_NUM_BINS * 3]);
+            assert_ne!(histogram, &[0.0_f64; HISTOGRAM_DIM]);
         }
     }
 }

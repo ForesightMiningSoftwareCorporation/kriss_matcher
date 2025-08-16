@@ -2,7 +2,7 @@ use log::{info, warn};
 use nalgebra::{DMatrix, DVector, Matrix3, Matrix3xX, Vector3};
 use nalgebra_lapack::SVD;
 
-use crate::point::Point3D;
+use crate::prelude::*;
 
 pub struct GNCSolverParams {
     pub gnc_factor: f64,
@@ -11,9 +11,8 @@ pub struct GNCSolverParams {
     pub cost_threshold: f64,
 }
 
-fn convert_points_to_matrix(points: &[Point3D]) -> Matrix3xX<f64> {
-    let matrix = points.iter().flat_map(|p| p.to_vec()).collect();
-    Matrix3xX::from_vec(matrix)
+fn convert_points_to_matrix(points: &[Point]) -> Matrix3xX<f64> {
+    Matrix3xX::from_columns(bytemuck::cast_slice::<Point, Vector3<f64>>(points))
 }
 
 // TODO: rewrite to use entire TEASER++ solver
@@ -23,8 +22,8 @@ fn convert_points_to_matrix(points: &[Point3D]) -> Matrix3xX<f64> {
 // 9ca20d9b52fcb631e7f8c9e3cc55c5ba131cc4e6/teaser/src/registration.cc#L730-L832
 pub fn solve_rotation_translation(
     params: &GNCSolverParams,
-    source_points: &[Point3D],
-    target_points: &[Point3D],
+    source_points: &[Point],
+    target_points: &[Point],
 ) -> (Matrix3<f64>, Vector3<f64>, Vec<bool>) {
     let source = convert_points_to_matrix(source_points);
     let target = convert_points_to_matrix(target_points);
@@ -64,7 +63,7 @@ pub fn solve_rotation_translation(
                 .unwrap();
             mu = 1.0 / (2.0 * max_residual / noise_bound_sq - 1.0);
             if mu <= 0.0 {
-                warn!(
+                println!(
                     "GNC-TLS terminated because maximum residual at initialization is very small."
                 );
                 break;
@@ -89,7 +88,7 @@ pub fn solve_rotation_translation(
         mu *= params.gnc_factor;
         prev_cost = cost;
         if cost_diff < params.cost_threshold {
-            info!("GNC-TLS solver terminated due to cost convergence. Cost diff: {cost_diff}, iteration: {i}");
+            println!("GNC-TLS solver terminated due to cost convergence. Cost diff: {cost_diff}, iteration: {i}");
             break;
         }
     }
@@ -105,9 +104,10 @@ fn svd_solve_rotation(
     target: &Matrix3xX<f64>,
     weights: &DVector<f64>,
 ) -> Matrix3<f64> {
-    let w_diag = DMatrix::from_diagonal(weights);
-
-    let h = source * w_diag * target.transpose();
+    let mut h = Matrix3::default();
+    for (i, w) in weights.iter().copied().enumerate() {
+        h += source.column(i) * w * target.column(i).transpose();
+    }
 
     let svd_solution = SVD::new(h);
     match svd_solution {
@@ -188,6 +188,7 @@ mod tests {
     use std::f64::consts::FRAC_PI_4;
 
     use all_asserts::assert_le;
+    use nalgebra::distance;
     use rand::{thread_rng, Rng};
 
     use super::*;
@@ -204,7 +205,7 @@ mod tests {
         };
         let mut rng = thread_rng();
         let source_points: Vec<_> = (0..num_points)
-            .map(|_| Point3D::new(rng.gen(), rng.gen(), rng.gen()))
+            .map(|_| Point::new(rng.gen(), rng.gen(), rng.gen()))
             .collect();
 
         let angle = FRAC_PI_4;
@@ -221,9 +222,9 @@ mod tests {
         let target_points: Vec<_> = source_points
             .iter()
             .map(|p| {
-                let source_vector = Vector3::from_vec(p.to_vec().into());
+                let source_vector = p.coords;
                 let target: Vector3<f64> = rotation * source_vector + translation;
-                Point3D::new(target[0], target[1], target[2])
+                Point::new(target[0], target[1], target[2])
             })
             .collect();
 

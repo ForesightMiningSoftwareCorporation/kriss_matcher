@@ -1,39 +1,48 @@
-use log::warn;
-use nalgebra::{DMatrix, Vector3};
+use nalgebra::{MatrixXx3, Vector3};
 use nalgebra_lapack::SVD;
 
-use crate::{kdtree::KdTreePointCloud, point::Point3D, point_cloud::PointCloud};
+use crate::prelude::*;
+use crate::query::{search_radius, PointQuery};
 
 type NormalEstimationResult = (Vec<Option<Vector3<f64>>>, Vec<Option<Vec<u64>>>);
 
-pub fn estimate_normals_and_get_neigbours_indexes(
-    point_cloud: &PointCloud,
-    kdtree: &KdTreePointCloud,
+const MAX_NEIGHBOR_INDICES: usize = 1000;
+
+pub fn estimate_normals_and_get_neighbor_indices(
+    point_cloud: &[Point],
+    query: &PointQuery,
     // TODO: execute two radius searches, first with radius_fpfh and
     //       then with radius_normal
     radius: f64,
-    min_neigbours: usize,
+    min_neighbors: usize,
     min_linearity: f64, // = 0.99,
 ) -> NormalEstimationResult {
     let mut normals = vec![None; point_cloud.len()];
-    let mut all_neigbours_indexes = vec![None; point_cloud.len()];
-    for (i, point) in point_cloud.points.iter().enumerate() {
-        let neigbours_indexes = kdtree.radius_search(point, radius);
-        if neigbours_indexes.len() < min_neigbours {
-            normals[i] = None;
+    let mut all_neighbor_indices = vec![None; point_cloud.len()];
+    for (i, point) in point_cloud.iter().copied().enumerate() {
+        let neighbor_indices = search_radius(query, point, radius).collect::<Vec<_>>();
+        if neighbor_indices.len() > MAX_NEIGHBOR_INDICES {
+            println!(
+                "Too many neighbors found for point {i}: {} > {MAX_NEIGHBOR_INDICES}. Perhaps your `voxel_size` is too large?",
+                neighbor_indices.len()
+            );
+        }
+        if neighbor_indices.len() < min_neighbors {
+            // normals[i] = None;
             continue;
         }
 
         // Why not PCA? Well, the matrix shouldn't be big, so perfomance shouldn't
         // be an issue. SVD, on the other hand, should give more stable results.
-        let centroid = calculate_centroid(point_cloud, &neigbours_indexes);
+        let centroid = calculate_centroid(point_cloud, &neighbor_indices);
 
-        let mut normalized_surface = DMatrix::zeros(neigbours_indexes.len(), 3);
-        for (row, &index) in neigbours_indexes.iter().enumerate() {
-            let neigbour = &point_cloud.points[index as usize];
-            normalized_surface[(row, 0)] = neigbour.x - centroid.x;
-            normalized_surface[(row, 1)] = neigbour.y - centroid.y;
-            normalized_surface[(row, 2)] = neigbour.z - centroid.z;
+        // TODO: Transpose this; shouldn't change the SVD.
+        let mut normalized_surface = MatrixXx3::zeros(neighbor_indices.len());
+        for (row, &index) in neighbor_indices.iter().enumerate() {
+            let neigbour = &point_cloud[index as usize];
+            normalized_surface
+                .row_mut(row)
+                .copy_from(&(neigbour - centroid).transpose());
         }
         let svd_solution = SVD::new(normalized_surface);
         match svd_solution {
@@ -47,7 +56,7 @@ pub fn estimate_normals_and_get_neigbours_indexes(
                 let linearity = (sigma1 - sigma2) / sigma1;
                 let tau_lin = min_linearity;
                 if linearity > tau_lin {
-                    warn!("Liniarity ({linearity})  is higher than {tau_lin}");
+                    println!("Linearity ({linearity})  is higher than {tau_lin}");
                     normals[i] = None;
                     continue;
                 }
@@ -55,28 +64,22 @@ pub fn estimate_normals_and_get_neigbours_indexes(
                 let v_t = svd.vt;
                 let normal = Vector3::new(v_t[(2, 0)], v_t[(2, 1)], v_t[(2, 2)]).normalize();
                 normals[i] = Some(normal);
-                all_neigbours_indexes[i] = Some(neigbours_indexes);
+                all_neighbor_indices[i] = Some(neighbor_indices);
             }
             None => {
-                warn!("Unable to solve SVD at {i}")
+                println!("Unable to solve SVD at {i}")
             }
         }
     }
-    (normals, all_neigbours_indexes)
+    (normals, all_neighbor_indices)
 }
 
-fn calculate_centroid(point_cloud: &PointCloud, indices: &[u64]) -> Point3D {
-    let mut centroid = Point3D::zero();
-    let n = indices.len() as f64;
+fn calculate_centroid(points: &[Point], indices: &[u64]) -> Point {
+    let mut centroid = Point::origin();
     for index in indices.iter() {
-        let point = &point_cloud.points[*index as usize];
-        centroid.x += point.x;
-        centroid.y += point.y;
-        centroid.z += point.z;
+        centroid.coords += points[*index as usize].coords;
     }
-    centroid.x /= n;
-    centroid.y /= n;
-    centroid.z /= n;
+    centroid.coords /= indices.len() as f64;
     centroid
 }
 
@@ -93,19 +96,14 @@ mod tests {
         let mut points = Vec::new();
         for x in -1..=1 {
             for y in -1..=1 {
-                points.push(Point3D::new(x as f64, y as f64, 0.0));
+                points.push(Point::new(x as f64, y as f64, 0.0));
             }
         }
-        let point_cloud = PointCloud::from_points(points);
+        let point_cloud = PointCloud { points: &points };
         let kdtree = KdTreePointCloud::new(&point_cloud);
         let min_linearity = 0.99;
-        let (normals, _) = estimate_normals_and_get_neigbours_indexes(
-            &point_cloud,
-            &kdtree,
-            1.5,
-            3,
-            min_linearity,
-        );
+        let (normals, _) =
+            estimate_normals_and_get_neighbor_indices(&point_cloud, &kdtree, 1.5, 3, min_linearity);
 
         for possible_normal in normals {
             if let Some(normal) = possible_normal {
@@ -119,15 +117,15 @@ mod tests {
 
     #[test]
     fn test_not_enough_neigbours() {
-        let points = vec![Point3D::new(1.0, 2.0, 3.0), Point3D::zero()];
-        let point_cloud = PointCloud::from_points(points);
+        let points = vec![Point::new(1.0, 2.0, 3.0), Point::origin()];
+        let point_cloud = PointCloud { points: &points };
         let kdtree = KdTreePointCloud::new(&point_cloud);
 
         let radius = 0.05;
         let min_neigbours = 3;
         let min_linearity = 0.3;
 
-        let (normals, _) = estimate_normals_and_get_neigbours_indexes(
+        let (normals, _) = estimate_normals_and_get_neighbor_indices(
             &point_cloud,
             &kdtree,
             radius,

@@ -11,36 +11,49 @@ homepage = "https://github.com/szobov/kriss_matcher"
 documentation = "https://github.com/szobov/kriss_matcher"
 
 [dependencies]
+bytemuck = "1.23.2"
 env_logger = "0.11.5"
-kiddo = "4.2.1"
 log = "0.4.22"
-nalgebra = "0.33.0"
+nalgebra = { version = "0.33.2", features = ["bytemuck"] }
 
-numpy = { version = "0.22.0", features = ["nalgebra"] }
+# numpy = { version = "0.22.0", features = ["nalgebra"] }
 petgraph = "0.6.5"
-pyo3 = { version = "0.22.4", features = ["extension-module"] }
-pyo3-stub-gen = "0.6.0"
+# pyo3 = { version = "0.22.4", features = ["extension-module"] }
+# pyo3-stub-gen = "0.6.0"
+rstar = "0.12.2"
 rustworkx-core = "0.15.1"
 
 [dev-dependencies]
 all_asserts = "2.3.1"
 rand = "0.8.5"
 
-[lib]
-name = "kriss_matcher"
-crate-type = ["cdylib"]
+# [lib]
+# name = "kriss_matcher"
+# crate-type = ["cdylib"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # nalgebra-lapack = { version = "0.25.0"}
-nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["openblas"] }
-openblas-src = { version = "0.10.9", default-features = false, features = ["static"] }
+nalgebra-lapack = { version = "0.25.0", default-features = false, features = [
+    "openblas",
+] }
+openblas-src = { version = "0.10.9", default-features = false, features = [
+    "static",
+    "system",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["accelerate"] }
+nalgebra-lapack = { version = "0.25.0", default-features = false, features = [
+    "accelerate",
+] }
 
 [target.'cfg(target_os="windows")'.build-dependencies]
 vcpkg = "0.2"
 
 [target.'cfg(target_os="windows")'.dependencies]
-nalgebra-lapack = { version = "0.25.0", default-features = false, features = ["openblas"] }
-openblas-src = { version = "0.10.9", default-features = false, features = ["system", "static"] }
+nalgebra-lapack = { version = "0.25.0", default-features = false, features = [
+    "openblas",
+] }
+openblas-src = { version = "0.10.9", default-features = false, features = [
+    "system",
+    "static",
+] }
