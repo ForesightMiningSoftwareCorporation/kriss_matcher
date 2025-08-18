@@ -1,4 +1,3 @@
-use log::{info, warn};
 use nalgebra::{DMatrix, DVector, Matrix3, Matrix3xX, Vector3};
 use nalgebra_lapack::SVD;
 
@@ -88,7 +87,9 @@ pub fn solve_rotation_translation(
         mu *= params.gnc_factor;
         prev_cost = cost;
         if cost_diff < params.cost_threshold {
-            println!("GNC-TLS solver terminated due to cost convergence. Cost diff: {cost_diff}, iteration: {i}");
+            println!(
+                "GNC-TLS solver terminated due to cost convergence. Cost diff: {cost_diff}, iteration: {i}"
+            );
             break;
         }
     }
@@ -189,7 +190,7 @@ mod tests {
 
     use all_asserts::assert_le;
     use nalgebra::distance;
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
 
     use super::*;
 
@@ -205,7 +206,7 @@ mod tests {
         };
         let mut rng = thread_rng();
         let source_points: Vec<_> = (0..num_points)
-            .map(|_| Point::new(rng.gen(), rng.gen(), rng.gen()))
+            .map(|_| Point::new(rng.random(), rng.random(), rng.random()))
             .collect();
 
         let angle = FRAC_PI_4;

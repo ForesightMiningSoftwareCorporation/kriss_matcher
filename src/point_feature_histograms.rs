@@ -43,7 +43,7 @@ pub fn get_fastest_point_feature_histogram(
     points: &[Point],
     normals: &[Option<Vector3<f64>>],
     neigbours_indexes: &[Option<Vec<u64>>],
-) -> Vec<Option<Histogram>> {
+) -> (Vec<Histogram>, Vec<u64>) {
     let mut spf_histograms = vec![None; points.len()];
     for (index, point) in points.iter().enumerate() {
         if normals[index].is_none() {
@@ -72,7 +72,8 @@ pub fn get_fastest_point_feature_histogram(
         }
     }
 
-    let mut fpf_histograms = vec![None; points.len()];
+    let mut fpf_histograms = vec![];
+    let mut histogram_point_indices = vec![];
     for (index, point) in points.iter().enumerate() {
         if normals[index].is_none() {
             continue;
@@ -80,9 +81,8 @@ pub fn get_fastest_point_feature_histogram(
         if spf_histograms[index].is_none() {
             continue;
         }
-        let spf_histogram = spf_histograms[index].as_ref().unwrap();
         // TODO: remove unwrap with proper Some handling
-        let mut fpf_histogram = spf_histogram.clone();
+        let mut fpf_histogram = *spf_histograms[index].as_ref().unwrap();
 
         if let Some(neigbour_indexes) = &neigbours_indexes[index] {
             for &neigbour_index in neigbour_indexes.iter() {
@@ -103,11 +103,12 @@ pub fn get_fastest_point_feature_histogram(
             for item in fpf_histogram.iter_mut() {
                 *item *= normalization_scale
             }
-            fpf_histograms[index] = Some(fpf_histogram);
+            fpf_histograms.push(fpf_histogram);
+            histogram_point_indices.push(index as u64);
         }
     }
 
-    fpf_histograms
+    (fpf_histograms, histogram_point_indices)
 }
 
 #[cfg(test)]

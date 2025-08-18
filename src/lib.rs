@@ -1,8 +1,9 @@
-use log::info;
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::{Isometry3, Matrix3, UnitQuaternion, Vector3};
+use std::time::Instant;
 
+use crate::downsample::downsample_points;
 use crate::feature_matching::mutual_matching;
-use crate::gnc_solver::{solve_rotation_translation, GNCSolverParams};
+use crate::gnc_solver::{GNCSolverParams, solve_rotation_translation};
 use crate::graph_pruning::correspondance_graph_pruning;
 use crate::normal_estimation::estimate_normals_and_get_neighbor_indices;
 use crate::point_feature_histograms::get_fastest_point_feature_histogram;
@@ -25,6 +26,7 @@ pub mod prelude {
     pub type Histogram = [f64; HISTOGRAM_DIM];
 }
 
+pub mod downsample;
 pub mod feature_matching;
 pub mod gnc_solver;
 pub mod graph_pruning;
@@ -32,82 +34,179 @@ pub mod normal_estimation;
 pub mod point_feature_histograms;
 pub mod query;
 
-pub fn find_point_cloud_transformation(
-    source: &[Point],
-    target: &[Point],
-    voxel_size: f64,
-) -> (Matrix3<f64>, Vector3<f64>, Vec<bool>) {
-    let source_query = create_point_query(source);
-    let target_query = create_point_query(target);
-
-    let neighbor_search_radius = 3.5 * voxel_size;
-    let min_neigbours = 3;
-    let min_linearity = 0.99;
-
-    println!("calculating source normals");
-    let (source_normals, source_neighbors_indexes) = estimate_normals_and_get_neighbor_indices(
-        source,
-        &source_query,
-        neighbor_search_radius,
-        min_neigbours,
-        min_linearity,
-    );
-    println!("calculating target normals");
-    let (target_normals, target_neighbors_indexes) = estimate_normals_and_get_neighbor_indices(
-        target,
-        &target_query,
-        neighbor_search_radius,
-        min_neigbours,
-        min_linearity,
-    );
-
-    println!("calculating histograms");
-    let source_feature_histograms =
-        get_fastest_point_feature_histogram(source, &source_normals, &source_neighbors_indexes);
-    let target_feature_histograms =
-        get_fastest_point_feature_histogram(target, &target_normals, &target_neighbors_indexes);
-
-    println!("preforming mutual matching");
-    let max_number_of_correspondances = 3000;
-
-    let points_correspondances = mutual_matching(
-        &source_feature_histograms,
-        &target_feature_histograms,
-        max_number_of_correspondances,
-    );
-    println!(
-        "found {} mutualy matched correspondances",
-        points_correspondances.len()
-    );
-    let distance_noise_threshold = 1.5 * voxel_size;
-    println!("prunning graph");
-    let filtered_correspondances = correspondance_graph_pruning(
-        &points_correspondances,
-        source,
-        target,
-        distance_noise_threshold,
-    );
-
-    let gnc_params = GNCSolverParams {
-        gnc_factor: 1.4,
-        noise_bound: 0.001,
-        max_iterations: 100,
-        cost_threshold: 0.005,
-    };
-
-    let mut source_filtered_points: Vec<Point> = Vec::new();
-    let mut target_filtered_points: Vec<Point> = Vec::new();
-    for (source_point_id, target_point_id) in filtered_correspondances.iter() {
-        source_filtered_points.push(source[*source_point_id as usize]);
-        target_filtered_points.push(target[*target_point_id as usize]);
+#[derive(Debug, Clone, Copy)]
+pub struct KrissMatcherConfig {
+    pub voxel_size: f64,
+    pub use_voxel_sampling: bool,
+    // pub use_quatro: bool,
+    pub thr_linearity: f64,
+    pub num_max_corr: usize,
+    // Below params just works in general cases
+    pub normal_radius_gain: f64,
+    pub fpfh_radius_gain: f64,
+    // The smaller, more conservative
+    pub robin_noise_bound_gain: f64,
+    pub solver_noise_bound_gain: f64,
+    pub enable_noise_bound_clamping: bool,
+    // Unknown
+    // pub robin_mode: RobinMode,
+    pub tuple_scale: f64,
+    // Always true
+    // pub use_ratio_test: bool,
+}
+impl KrissMatcherConfig {
+    pub fn build(self) -> KrissMatcher {
+        assert!(self.solver_noise_bound_gain < self.robin_noise_bound_gain);
+        KrissMatcher { config: self }
     }
+}
+impl Default for KrissMatcherConfig {
+    fn default() -> Self {
+        Self {
+            voxel_size: 0.3,
+            use_voxel_sampling: true,
+            // use_quatro: false,
+            thr_linearity: 1.0,
+            num_max_corr: 5000,
+            normal_radius_gain: 3.0,
+            fpfh_radius_gain: 5.0,
+            robin_noise_bound_gain: 1.0, // 1.5 originally here
+            solver_noise_bound_gain: 0.75,
+            enable_noise_bound_clamping: true,
+            // robin_mode: RobinMode::MaxCore,
+            tuple_scale: 0.95,
+            // use_ratio_test: true,
+        }
+    }
+}
 
-    println!("solving rotation/translation");
-    let (rotation, translation, inliers) = solve_rotation_translation(
-        &gnc_params,
-        &source_filtered_points,
-        &target_filtered_points,
-    );
+#[derive(Debug, Clone, Copy)]
+pub struct RegistrationSolution {
+    pub valid: bool,
+    pub translation: Vector3<f64>,
+    pub rotation: Matrix3<f64>,
+}
+impl RegistrationSolution {
+    pub fn as_isometry(&self) -> Result<Isometry3<f64>, Isometry3<f64>> {
+        let iso = Isometry3::from_parts(
+            self.translation.into(),
+            UnitQuaternion::from_matrix(&self.rotation),
+        );
+        if self.valid { Ok(iso) } else { Err(iso) }
+    }
+}
 
-    (rotation, translation, inliers)
+#[derive(Debug)]
+pub struct KrissMatcher {
+    config: KrissMatcherConfig,
+}
+impl KrissMatcher {
+    pub fn estimate(&mut self, source: &[Point], target: &[Point]) -> RegistrationSolution {
+        let config = self.config;
+        let source = downsample_points(source, config.voxel_size);
+        let target = downsample_points(target, config.voxel_size);
+        let source = source.as_slice();
+        let target = target.as_slice();
+        println!("Building queries");
+        let start = Instant::now();
+        let source_query = create_point_query(source);
+        println!("Elapsed (source): {:?}", start.elapsed());
+        let start = Instant::now();
+        let target_query = create_point_query(target);
+        println!("Elapsed (target): {:?}", start.elapsed());
+
+        let neighbor_search_radius = config.normal_radius_gain * config.voxel_size;
+        let min_neigbours = 3;
+
+        println!("calculating source normals");
+        let start = Instant::now();
+        let (source_normals, source_neighbors_indexes) = estimate_normals_and_get_neighbor_indices(
+            source,
+            &source_query,
+            neighbor_search_radius,
+            min_neigbours,
+            config.thr_linearity,
+        );
+        println!("Elapsed: {:?}", start.elapsed());
+        println!("calculating target normals");
+        let start = Instant::now();
+        let (target_normals, target_neighbors_indexes) = estimate_normals_and_get_neighbor_indices(
+            target,
+            &target_query,
+            neighbor_search_radius,
+            min_neigbours,
+            config.thr_linearity,
+        );
+        println!("Elapsed: {:?}", start.elapsed());
+
+        // TODO: Use different list of neighbors_indexes for fpfh.
+        println!("calculating histograms");
+        let start = Instant::now();
+        let (source_feature_histograms, source_point_indices) =
+            get_fastest_point_feature_histogram(source, &source_normals, &source_neighbors_indexes);
+        println!("Elapsed (Source): {:?}", start.elapsed());
+        let start = Instant::now();
+        let (target_feature_histograms, target_point_indices) =
+            get_fastest_point_feature_histogram(target, &target_normals, &target_neighbors_indexes);
+        println!("Elapsed (Target): {:?}", start.elapsed());
+
+        println!("preforming mutual matching");
+
+        let start = Instant::now();
+        // ROBINMatching::match
+        let points_correspondances = mutual_matching(
+            &source_feature_histograms,
+            &target_feature_histograms,
+            &source_point_indices,
+            &target_point_indices,
+            config.num_max_corr,
+        );
+        println!("Elapsed: {:?}", start.elapsed());
+        println!(
+            "found {} mutualy matched correspondances",
+            points_correspondances.len()
+        );
+        // probably config.robin_noise_bound_gain?
+        let distance_noise_threshold = config.robin_noise_bound_gain * config.voxel_size;
+        println!("prunning graph");
+        let start = Instant::now();
+        let filtered_correspondances = correspondance_graph_pruning(
+            &points_correspondances,
+            source,
+            target,
+            distance_noise_threshold,
+        );
+        println!("Elapsed: {:?}", start.elapsed());
+
+        let gnc_params = GNCSolverParams {
+            gnc_factor: 1.4,
+            noise_bound: config.solver_noise_bound_gain * config.voxel_size,
+            max_iterations: 100,
+            cost_threshold: 0.005,
+        };
+
+        let mut source_filtered_points: Vec<Point> = Vec::new();
+        let mut target_filtered_points: Vec<Point> = Vec::new();
+        for (source_point_id, target_point_id) in filtered_correspondances.iter() {
+            source_filtered_points.push(source[*source_point_id as usize]);
+            target_filtered_points.push(target[*target_point_id as usize]);
+        }
+
+        println!("solving rotation/translation");
+        let start = Instant::now();
+        // See GncSolver.cpp: RobustRegistrationSolver::solve
+        let (rotation, translation, inliers) = solve_rotation_translation(
+            &gnc_params,
+            &source_filtered_points,
+            &target_filtered_points,
+        );
+        println!("Elapsed: {:?}", start.elapsed());
+
+        // TODO: Failed if there are no inliers.
+        RegistrationSolution {
+            valid: inliers.iter().any(|&v| v),
+            rotation,
+            translation,
+        }
+    }
 }

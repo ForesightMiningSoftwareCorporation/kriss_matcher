@@ -41,7 +41,7 @@ pub fn correspondance_graph_pruning(
     let mut filtered_correspondances = Vec::new();
     if let Some(max_core_number) = &cores.values().max() {
         for (node_id, _) in cores.iter().filter(|(_, v)| v == max_core_number) {
-            if let Some(&filtered_correspondance) = &correspondance_graph.node_weight(*node_id) {
+            if let Some(&filtered_correspondance) = correspondance_graph.node_weight(*node_id) {
                 filtered_correspondances.push(filtered_correspondance);
             }
         }

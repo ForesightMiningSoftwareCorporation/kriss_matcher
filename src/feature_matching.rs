@@ -1,38 +1,38 @@
-use log::debug;
-use rstar::primitives::GeomWithData;
+use std::time::Instant;
+
+use ahash::HashMap;
+use rayon::prelude::*;
 use rstar::RTree;
+use rstar::primitives::GeomWithData;
 
 use crate::prelude::*;
 
 type HistogramQuery = RTree<GeomWithData<[f64; HISTOGRAM_DIM], u64>>;
 
-fn make_query_from_histograms(histograms: &[Option<Histogram>]) -> HistogramQuery {
+fn make_query_from_histograms(histograms: &[Histogram]) -> HistogramQuery {
     RTree::bulk_load(
         histograms
             .iter()
+            .copied()
             .enumerate()
-            .filter_map(|(i, h)| {
-                h.as_ref()
-                    .map(|h| GeomWithData::new(h.as_slice().try_into().unwrap(), i as u64))
-            })
+            .map(|(i, h)| GeomWithData::new(h, i as u64))
             .collect::<Vec<_>>(),
     )
 }
 
 fn match_points(
-    source_feature_histograms: &[Option<Histogram>],
+    source_feature_histograms: &[Histogram],
     target_query: &HistogramQuery,
-) -> std::collections::HashMap<u64, u64> {
-    let mut source_to_target = Vec::new();
-    for (source_index, source_histogram_opt) in source_feature_histograms.iter().enumerate() {
-        if let Some(source_histogram) = source_histogram_opt {
+) -> HashMap<u64, u64> {
+    source_feature_histograms
+        .par_iter()
+        .enumerate()
+        .map(|(source_index, source_histogram)| {
             let neighbor = target_query.nearest_neighbor(source_histogram);
             let neighbor_index = neighbor.unwrap().data;
-            source_to_target.push((source_index as u64, neighbor_index));
-        }
-    }
-    let result: std::collections::HashMap<u64, u64> = source_to_target.into_iter().collect();
-    result
+            (source_index as u64, neighbor_index)
+        })
+        .collect()
 }
 
 fn descriptor_distance_ratio(
@@ -52,40 +52,73 @@ fn descriptor_distance_ratio(
 }
 
 pub fn mutual_matching(
-    source_feature_histograms: &[Option<Histogram>],
-    target_feature_histograms: &[Option<Histogram>],
+    source_feature_histograms: &[Histogram],
+    target_feature_histograms: &[Histogram],
+    source_point_indices: &[u64],
+    target_point_indices: &[u64],
     max_number_of_correspondances: usize, // XXX: in paper they propose 3000
 ) -> Vec<(u64, u64)> {
     let source_query = make_query_from_histograms(source_feature_histograms);
     let target_query = make_query_from_histograms(target_feature_histograms);
-    let mut correspondance_with_ratio = Vec::new();
 
-    let source_to_target = match_points(source_feature_histograms, &target_query);
-    let target_to_source = match_points(target_feature_histograms, &source_query);
+    // let start = Instant::now();
+    // let source_to_target = match_points(source_feature_histograms, &target_query);
+    // println!("Elapsed (source to target): {:?}", start.elapsed());
+    // let start = Instant::now();
+    // let target_to_source = match_points(target_feature_histograms, &source_query);
+    // println!("Elapsed (target to source): {:?}", start.elapsed());
+
+    let start = Instant::now();
+
+    let mut correspondance_with_ratio = source_feature_histograms
+        .par_iter()
+        .enumerate()
+        .filter_map(|(source_index, source_histogram)| {
+            let source_index = source_index as u64;
+            let neighbor = target_query.nearest_neighbor(source_histogram).unwrap();
+            let target_index = neighbor.data;
+            let source_neighbor = source_query.nearest_neighbor(neighbor.geom()).unwrap();
+            if source_neighbor.data == source_index {
+                descriptor_distance_ratio(source_histogram, &target_query)
+                    .map(|ratio| (source_index, target_index, ratio))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
     // println!("source to target: {source_to_target:?}");
     // println!("target to source: {target_to_source:?}");
-    for (&source_index, &target_index) in &source_to_target {
-        if let Some(&matched_index) = target_to_source.get(&target_index) {
-            if matched_index == source_index {
-                if let Some(source_histogram) =
-                    source_feature_histograms[source_index as usize].as_ref()
-                {
-                    let ratio_opt = descriptor_distance_ratio(source_histogram, &target_query);
-                    if let Some(ratio) = ratio_opt {
-                        correspondance_with_ratio.push((source_index, target_index, ratio));
-                    }
-                }
-            }
-        }
-    }
+    // for (&source_index, &target_index) in &source_to_target {
+    //     if let Some(&matched_index) = target_to_source.get(&target_index) {
+    //         if matched_index == source_index {
+    //             if let Some(source_histogram) =
+    //                 source_feature_histograms[source_index as usize].as_ref()
+    //             {
+    //                 let ratio_opt = descriptor_distance_ratio(source_histogram, &target_query);
+    //                 if let Some(ratio) = ratio_opt {
+    //                     correspondance_with_ratio.push((source_index, target_index, ratio));
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+    println!("Elapsed (matching): {:?}", start.elapsed());
     // TODO: Can use a binary heap here to avoid doing a full sort.
     // https://users.rust-lang.org/t/solved-best-way-to-find-largest-three-values-in-unsorted-slice/34754/6
+    let start = Instant::now();
     correspondance_with_ratio.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+    println!("Elapsed (sorting): {:?}", start.elapsed());
 
     correspondance_with_ratio
         .into_iter()
         .take(max_number_of_correspondances)
-        .map(|(s, t, _)| (s, t))
+        .map(|(s, t, _)| {
+            (
+                source_point_indices[s as usize],
+                target_point_indices[t as usize],
+            )
+        })
         .collect()
 }
 
