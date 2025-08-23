@@ -1,6 +1,6 @@
-use nalgebra::{distance, Vector3};
+use nalgebra::{Vector3, distance};
 
-use crate::prelude::*;
+use crate::{prelude::*, query::PointQuery};
 
 fn compute_features(
     point_a: &Point,
@@ -41,71 +41,72 @@ fn bin_features(features: &[f64; 3], histogram: &mut Histogram) {
 
 pub fn get_fastest_point_feature_histogram(
     points: &[Point],
+    query: &PointQuery,
     normals: &[Option<Vector3<f64>>],
-    neigbours_indexes: &[Option<Vec<u64>>],
+    radius: f64,
 ) -> (Vec<Histogram>, Vec<u64>) {
+    let sqr_radius = radius * radius;
     let mut spf_histograms = vec![None; points.len()];
-    for (index, point) in points.iter().enumerate() {
+    for (index, &point) in points.iter().enumerate() {
         if normals[index].is_none() {
             continue;
         }
         let mut histogram: Histogram = [0.0_f64; HISTOGRAM_DIM];
-        // TODO: handle case when not enough neigbors with normals
-        if let Some(neigbour_indexes) = &neigbours_indexes[index] {
-            for &neigbour_index in neigbour_indexes.iter() {
-                if normals[neigbour_index as usize].is_none() || index == neigbour_index as usize {
-                    continue;
-                }
-                let features = compute_features(
-                    point,
-                    &points[neigbour_index as usize],
-                    &normals[index].unwrap(),
-                    &normals[neigbour_index as usize].unwrap(),
-                );
-                bin_features(&features, &mut histogram);
+        let mut num_neighbors = 0;
+        for neighbor in query.locate_within_distance(point.into(), sqr_radius) {
+            let neighbor_index = neighbor.data as usize;
+            if normals[neighbor_index].is_none() || index == neighbor_index {
+                continue;
             }
-            let normalization_scale = 100.0 / neigbour_indexes.len() as f64;
-            for item in histogram.iter_mut() {
-                *item *= normalization_scale
-            }
-            spf_histograms[index] = Some(histogram);
+            let features = compute_features(
+                &point,
+                &(*neighbor.geom()).into(),
+                &normals[index].unwrap(),
+                &normals[neighbor_index].unwrap(),
+            );
+            bin_features(&features, &mut histogram);
+            num_neighbors += 1;
         }
+        if num_neighbors == 0 {
+            continue;
+        }
+
+        let normalization_scale = 100.0 / num_neighbors as f64;
+        for item in histogram.iter_mut() {
+            *item *= normalization_scale
+        }
+        spf_histograms[index] = Some(histogram);
     }
 
     let mut fpf_histograms = vec![];
     let mut histogram_point_indices = vec![];
-    for (index, point) in points.iter().enumerate() {
-        if normals[index].is_none() {
+    for (index, &point) in points.iter().enumerate() {
+        let Some(mut fpf_histogram) = spf_histograms[index] else {
             continue;
-        }
-        if spf_histograms[index].is_none() {
-            continue;
-        }
-        // TODO: remove unwrap with proper Some handling
-        let mut fpf_histogram = *spf_histograms[index].as_ref().unwrap();
+        };
 
-        if let Some(neigbour_indexes) = &neigbours_indexes[index] {
-            for &neigbour_index in neigbour_indexes.iter() {
-                if normals[neigbour_index as usize].is_none() || index == neigbour_index as usize {
-                    continue;
-                }
-                let neighbor_point = &points[neigbour_index as usize];
-                let distance = distance(point, neighbor_point);
-                let inv_omega = 1.0 / (distance + 1e-6);
-                let neigbour_spf_histogram =
-                    spf_histograms[neigbour_index as usize].as_ref().unwrap();
+        let mut num_neighbors = 0;
+        for neighbor in query.locate_within_distance(point.into(), sqr_radius) {
+            let neighbor_index = neighbor.data as usize;
+            if normals[neighbor_index].is_none() || index == neighbor_index {
+                continue;
+            }
+            let neighbor_point = (*neighbor.geom()).into();
+            let distance = distance(&point, &neighbor_point);
+            let inv_omega = 1.0 / (distance + 1e-6);
+            let neigbour_spf_histogram = spf_histograms[neighbor_index].as_ref().unwrap();
 
-                for (hist_index, value) in neigbour_spf_histogram.iter().enumerate() {
-                    fpf_histogram[hist_index] += value * inv_omega;
-                }
+            for (hist_index, value) in neigbour_spf_histogram.iter().enumerate() {
+                fpf_histogram[hist_index] += value * inv_omega;
             }
-            let normalization_scale = 100.0 / neigbour_indexes.len() as f64;
-            for item in fpf_histogram.iter_mut() {
-                *item *= normalization_scale
-            }
-            fpf_histograms.push(fpf_histogram);
-            histogram_point_indices.push(index as u64);
+            num_neighbors += 1;
         }
+        let normalization_scale = 100.0 / num_neighbors as f64;
+        for item in fpf_histogram.iter_mut() {
+            *item *= normalization_scale
+        }
+        fpf_histograms.push(fpf_histogram);
+        histogram_point_indices.push(index as u64);
     }
 
     (fpf_histograms, histogram_point_indices)

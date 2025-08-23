@@ -1,4 +1,5 @@
 use nalgebra::{Isometry3, Matrix3, UnitQuaternion, Vector3};
+use std::fs::read_to_string;
 use std::time::Instant;
 
 use crate::downsample::downsample_points;
@@ -39,7 +40,7 @@ pub struct KrissMatcherConfig {
     pub voxel_size: f64,
     pub use_voxel_sampling: bool,
     // pub use_quatro: bool,
-    pub thr_linearity: f64,
+    pub max_linearity: f64,
     pub num_max_corr: usize,
     // Below params just works in general cases
     pub normal_radius_gain: f64,
@@ -66,7 +67,7 @@ impl Default for KrissMatcherConfig {
             voxel_size: 0.3,
             use_voxel_sampling: true,
             // use_quatro: false,
-            thr_linearity: 1.0,
+            max_linearity: 1.0,
             num_max_corr: 5000,
             normal_radius_gain: 3.0,
             fpfh_radius_gain: 5.0,
@@ -103,10 +104,18 @@ pub struct KrissMatcher {
 impl KrissMatcher {
     pub fn estimate(&mut self, source: &[Point], target: &[Point]) -> RegistrationSolution {
         let config = self.config;
-        let source = downsample_points(source, config.voxel_size);
-        let target = downsample_points(target, config.voxel_size);
-        let source = source.as_slice();
-        let target = target.as_slice();
+        let source_vec;
+        let target_vec;
+        let (source, target) = if config.use_voxel_sampling {
+            source_vec = Some(downsample_points(source, config.voxel_size));
+            target_vec = Some(downsample_points(target, config.voxel_size));
+            (
+                source_vec.as_ref().unwrap().as_slice(),
+                target_vec.as_ref().unwrap().as_slice(),
+            )
+        } else {
+            (source, target)
+        };
         println!("Building queries");
         let start = Instant::now();
         let source_query = create_point_query(source);
@@ -120,34 +129,43 @@ impl KrissMatcher {
 
         println!("calculating source normals");
         let start = Instant::now();
-        let (source_normals, source_neighbors_indexes) = estimate_normals_and_get_neighbor_indices(
+        let source_normals = estimate_normals_and_get_neighbor_indices(
             source,
             &source_query,
             neighbor_search_radius,
             min_neigbours,
-            config.thr_linearity,
+            config.max_linearity,
         );
         println!("Elapsed: {:?}", start.elapsed());
         println!("calculating target normals");
         let start = Instant::now();
-        let (target_normals, target_neighbors_indexes) = estimate_normals_and_get_neighbor_indices(
+        let target_normals = estimate_normals_and_get_neighbor_indices(
             target,
             &target_query,
             neighbor_search_radius,
             min_neigbours,
-            config.thr_linearity,
+            config.max_linearity,
         );
         println!("Elapsed: {:?}", start.elapsed());
 
-        // TODO: Use different list of neighbors_indexes for fpfh.
+        let fpfh_search_radius = config.fpfh_radius_gain * config.voxel_size;
+
         println!("calculating histograms");
         let start = Instant::now();
-        let (source_feature_histograms, source_point_indices) =
-            get_fastest_point_feature_histogram(source, &source_normals, &source_neighbors_indexes);
+        let (source_feature_histograms, source_point_indices) = get_fastest_point_feature_histogram(
+            source,
+            &source_query,
+            &source_normals,
+            fpfh_search_radius,
+        );
         println!("Elapsed (Source): {:?}", start.elapsed());
         let start = Instant::now();
-        let (target_feature_histograms, target_point_indices) =
-            get_fastest_point_feature_histogram(target, &target_normals, &target_neighbors_indexes);
+        let (target_feature_histograms, target_point_indices) = get_fastest_point_feature_histogram(
+            target,
+            &target_query,
+            &target_normals,
+            fpfh_search_radius,
+        );
         println!("Elapsed (Target): {:?}", start.elapsed());
 
         println!("preforming mutual matching");
@@ -177,6 +195,10 @@ impl KrissMatcher {
             distance_noise_threshold,
         );
         println!("Elapsed: {:?}", start.elapsed());
+        println!(
+            "Pruned to {} correspondances",
+            filtered_correspondances.len()
+        );
 
         let gnc_params = GNCSolverParams {
             gnc_factor: 1.4,
@@ -187,10 +209,29 @@ impl KrissMatcher {
 
         let mut source_filtered_points: Vec<Point> = Vec::new();
         let mut target_filtered_points: Vec<Point> = Vec::new();
-        for (source_point_id, target_point_id) in filtered_correspondances.iter() {
-            source_filtered_points.push(source[*source_point_id as usize]);
-            target_filtered_points.push(target[*target_point_id as usize]);
+
+        let file =
+            read_to_string("correspondences.txt").expect("Failed to read correspondences file");
+        for line in file.lines() {
+            let mut parts = line.split_whitespace().map(|s| s.parse::<f64>().unwrap());
+            let source_point = Point::new(
+                parts.next().unwrap(),
+                parts.next().unwrap(),
+                parts.next().unwrap(),
+            );
+            let target_point = Point::new(
+                parts.next().unwrap(),
+                parts.next().unwrap(),
+                parts.next().unwrap(),
+            );
+            source_filtered_points.push(source_point);
+            target_filtered_points.push(target_point);
         }
+
+        // for (source_point_id, target_point_id) in filtered_correspondances.iter() {
+        //     source_filtered_points.push(source[*source_point_id as usize]);
+        //     target_filtered_points.push(target[*target_point_id as usize]);
+        // }
 
         println!("solving rotation/translation");
         let start = Instant::now();

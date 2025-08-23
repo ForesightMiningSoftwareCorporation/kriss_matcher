@@ -2,9 +2,7 @@ use nalgebra::{MatrixXx3, Vector3};
 use nalgebra_lapack::SVD;
 
 use crate::prelude::*;
-use crate::query::{search_radius, PointQuery};
-
-type NormalEstimationResult = (Vec<Option<Vector3<f64>>>, Vec<Option<Vec<u64>>>);
+use crate::query::{PointQuery, search_radius};
 
 const MAX_NEIGHBOR_INDICES: usize = 1000;
 
@@ -16,11 +14,11 @@ pub fn estimate_normals_and_get_neighbor_indices(
     radius: f64,
     min_neighbors: usize,
     min_linearity: f64, // = 0.99,
-) -> NormalEstimationResult {
+) -> Vec<Option<Vector3<f64>>> {
+    let sqr_radius = radius * radius;
     let mut normals = vec![None; point_cloud.len()];
-    let mut all_neighbor_indices = vec![None; point_cloud.len()];
     for (i, point) in point_cloud.iter().copied().enumerate() {
-        let neighbor_indices = search_radius(query, point, radius).collect::<Vec<_>>();
+        let neighbor_indices = search_radius(query, point, sqr_radius).collect::<Vec<_>>();
         if neighbor_indices.len() > MAX_NEIGHBOR_INDICES {
             println!(
                 "Too many neighbors found for point {i}: {} > {MAX_NEIGHBOR_INDICES}. Perhaps your `voxel_size` is too large?",
@@ -64,14 +62,13 @@ pub fn estimate_normals_and_get_neighbor_indices(
                 let v_t = svd.vt;
                 let normal = Vector3::new(v_t[(2, 0)], v_t[(2, 1)], v_t[(2, 2)]).normalize();
                 normals[i] = Some(normal);
-                all_neighbor_indices[i] = Some(neighbor_indices);
             }
             None => {
                 println!("Unable to solve SVD at {i}")
             }
         }
     }
-    (normals, all_neighbor_indices)
+    normals
 }
 
 fn calculate_centroid(points: &[Point], indices: &[u64]) -> Point {

@@ -40,6 +40,7 @@ pub fn downsample_points(points: &[Point], voxel_size: f64) -> Vec<Point> {
     result
 }
 
+#[allow(dead_code)]
 fn downsample_points_a(points: &[Point], voxel_size: f64) -> Vec<Point> {
     let inv_voxel_size = 1.0 / voxel_size;
     let mut points = points
@@ -53,7 +54,7 @@ fn downsample_points_a(points: &[Point], voxel_size: f64) -> Vec<Point> {
         .map(|index| Point::from(get_point(index) * voxel_size))
         .collect()
 }
-/*
+#[allow(dead_code)]
 fn downsample_points_b(points: &[Point], voxel_size: f64) -> Vec<Point> {
     let inv_voxel_size = 1.0 / voxel_size;
     points
@@ -64,4 +65,3 @@ fn downsample_points_b(points: &[Point], voxel_size: f64) -> Vec<Point> {
         .map(|index| Point::from(get_point(index) * voxel_size))
         .collect()
 }
-*/
