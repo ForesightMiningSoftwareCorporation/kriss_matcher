@@ -52,66 +52,75 @@ pub fn get_fastest_point_feature_histogram(
     radius: f64,
 ) -> (Vec<Histogram>, Vec<usize>) {
     let sqr_radius = radius * radius;
-    let mut spf_histograms = vec![];
-    let mut histogram_point_indices = vec![];
-    let mut histogram_point_indices_rev = vec![None; points.len()];
-    for (index, &point) in points.iter().enumerate() {
-        if normals[index].is_none() {
-            continue;
-        }
-        let mut histogram: Histogram = [0.0_f64; HISTOGRAM_DIM];
-        let mut num_neighbors = 0;
-        for neighbor in query.locate_within_distance(point.into(), sqr_radius) {
-            let neighbor_index = neighbor.data as usize;
-            if normals[neighbor_index].is_none() || index == neighbor_index {
-                continue;
-            }
-            let features = compute_features(
-                point,
-                (*neighbor.geom()).into(),
-                normals[index].unwrap(),
-                normals[neighbor_index].unwrap(),
-            );
-            if let Some(features) = features {
-                bin_features(&features, &mut histogram);
-                num_neighbors += 1;
-            }
-        }
-        if num_neighbors == 0 {
-            continue;
-        }
 
-        let normalization_scale = 100.0 / num_neighbors as f64;
-        for item in histogram.iter_mut() {
-            *item *= normalization_scale
-        }
-        let spf_index = spf_histograms.len();
-        spf_histograms.push(histogram);
-        histogram_point_indices.push(index);
-        histogram_point_indices_rev[index] = Some(spf_index);
-    }
+    let start = std::time::Instant::now();
 
-    let fpf_histograms = histogram_point_indices
+    let spf_histograms = points
         .par_iter()
         .enumerate()
-        .map(|(spf_index, &index)| {
-            let point = points[index];
-            let mut fpf_histogram = spf_histograms[spf_index];
-
+        .map(|(index, &point)| {
+            normals[index]?;
+            let mut histogram: Histogram = [0.0_f64; HISTOGRAM_DIM];
+            let mut num_neighbors = 0;
             for neighbor in query.locate_within_distance(point.into(), sqr_radius) {
                 let neighbor_index = neighbor.data as usize;
                 if normals[neighbor_index].is_none() || index == neighbor_index {
                     continue;
                 }
+                let features = compute_features(
+                    point,
+                    (*neighbor.geom()).into(),
+                    normals[index].unwrap(),
+                    normals[neighbor_index].unwrap(),
+                );
+                if let Some(features) = features {
+                    bin_features(&features, &mut histogram);
+                    num_neighbors += 1;
+                }
+            }
+            if num_neighbors == 0 {
+                return None;
+            }
+
+            let normalization_scale = 100.0 / num_neighbors as f64;
+            for item in histogram.iter_mut() {
+                *item *= normalization_scale
+            }
+
+            Some(histogram)
+        })
+        .collect::<Vec<_>>();
+
+    println!("FPFH part 1: {:?}", start.elapsed());
+
+    let histogram_point_indices = spf_histograms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, histogram)| histogram.is_some().then_some(index))
+        .collect::<Vec<_>>();
+
+    let start = std::time::Instant::now();
+
+    let fpf_histograms = histogram_point_indices
+        .par_iter()
+        .map(|&index| {
+            let point = points[index];
+            let mut fpf_histogram = spf_histograms[index].unwrap();
+
+            for neighbor in query.locate_within_distance(point.into(), sqr_radius) {
+                let neighbor_index = neighbor.data as usize;
+                if index == neighbor_index {
+                    continue;
+                }
+
+                let Some(neigbour_spf_histogram) = spf_histograms[neighbor_index] else {
+                    continue;
+                };
+
                 let neighbor_point = (*neighbor.geom()).into();
                 let distance = distance_squared(&point, &neighbor_point);
-                let inv_omega = if distance < 1e-6 {
-                    0.0
-                } else {
-                    1.0 / (distance + 1e-6)
-                };
-                let neigbour_spf_histogram =
-                    spf_histograms[histogram_point_indices_rev[neighbor_index].unwrap()];
+
+                let inv_omega = 1.0 / distance;
 
                 for (hist_index, value) in neigbour_spf_histogram.iter().enumerate() {
                     fpf_histogram[hist_index] += value * inv_omega;
@@ -130,6 +139,8 @@ pub fn get_fastest_point_feature_histogram(
             fpf_histogram
         })
         .collect::<Vec<_>>();
+
+    println!("FPFH part 2: {:?}", start.elapsed());
 
     (fpf_histograms, histogram_point_indices)
 }
