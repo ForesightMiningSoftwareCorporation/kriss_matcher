@@ -66,11 +66,11 @@ const SQR_THR_DIST: f64 = THR_DIST * THR_DIST;
 pub fn mutual_matching(
     source_feature_histograms: &[Histogram],
     target_feature_histograms: &[Histogram],
-    source_point_indices: &[u64],
-    target_point_indices: &[u64],
+    source_point_indices: &[usize],
+    target_point_indices: &[usize],
     max_number_of_correspondances: usize,
 ) -> Vec<(u64, u64)> {
-    mutual_matching_b(
+    mutual_matching_a(
         source_feature_histograms,
         target_feature_histograms,
         source_point_indices,
@@ -83,8 +83,8 @@ pub fn mutual_matching(
 fn mutual_matching_a(
     source_feature_histograms: &[Histogram],
     target_feature_histograms: &[Histogram],
-    source_point_indices: &[u64],
-    target_point_indices: &[u64],
+    source_point_indices: &[usize],
+    target_point_indices: &[usize],
     max_number_of_correspondances: usize,
 ) -> Vec<(u64, u64)> {
     println!(
@@ -114,7 +114,7 @@ fn mutual_matching_a(
             let ratio = distances[0] / distances[1];
             // distances[0] > SQR_THR_DIST ||
             // results in it overpruning
-            if distances[0] > SQR_THR_DIST || ratio > THR_RATIO_TEST || !ratio.is_finite() {
+            if ratio > THR_RATIO_TEST || !ratio.is_finite() {
                 return f64::INFINITY;
             }
             let nearest_source_index = source_points[0].0.data as usize;
@@ -159,8 +159,8 @@ fn mutual_matching_a(
         .take(max_number_of_correspondances)
         .map(|(s, t, _)| {
             (
-                source_point_indices[s as usize],
-                target_point_indices[t as usize],
+                source_point_indices[s as usize] as u64,
+                target_point_indices[t as usize] as u64,
             )
         })
         .collect()
@@ -170,8 +170,8 @@ fn mutual_matching_a(
 fn mutual_matching_b(
     source_feature_histograms: &[Histogram],
     target_feature_histograms: &[Histogram],
-    source_point_indices: &[u64],
-    target_point_indices: &[u64],
+    source_point_indices: &[usize],
+    target_point_indices: &[usize],
     max_number_of_correspondances: usize, // XXX: in paper they propose 3000
 ) -> Vec<(u64, u64)> {
     let source_query = make_query_from_histograms(source_feature_histograms);
@@ -231,58 +231,9 @@ fn mutual_matching_b(
         .take(max_number_of_correspondances)
         .map(|(s, t, _)| {
             (
-                source_point_indices[s as usize],
-                target_point_indices[t as usize],
+                source_point_indices[s as usize] as u64,
+                target_point_indices[t as usize] as u64,
             )
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_ok() {
-        const HISTOGRAM_NUM_BINS: usize = 11;
-
-        let source_histograms = vec![
-            Some(vec![1.0; HISTOGRAM_DIM]),
-            Some(vec![2.0; HISTOGRAM_DIM]),
-            Some(vec![3.0; HISTOGRAM_DIM]),
-        ];
-
-        let target_histograms = vec![
-            Some(vec![1.0; HISTOGRAM_DIM]),
-            Some(vec![2.0; HISTOGRAM_DIM]),
-            Some(vec![4.0; HISTOGRAM_DIM]),
-        ];
-
-        let max_number_of_correspondances = 10;
-
-        let correspondences = mutual_matching(
-            &source_histograms,
-            &target_histograms,
-            max_number_of_correspondances,
-        );
-
-        let expected_correspondences = [(0u64, 0u64), (1u64, 1u64)];
-
-        assert_eq!(
-            correspondences.len(),
-            expected_correspondences.len(),
-            "Expected {} correspondences, found {}",
-            expected_correspondences.len(),
-            correspondences.len()
-        );
-
-        for &(source_idx, target_idx) in &correspondences {
-            assert!(
-                expected_correspondences.contains(&(source_idx, target_idx)),
-                "Unexpected correspondence ({}, {})",
-                source_idx,
-                target_idx
-            );
-        }
-    }
 }

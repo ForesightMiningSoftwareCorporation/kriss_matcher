@@ -1,5 +1,5 @@
+use nalgebra::linalg::SVD;
 use nalgebra::{DMatrix, DVector, Matrix3, Matrix3xX, Vector3};
-use nalgebra_lapack::SVD;
 
 use crate::prelude::*;
 
@@ -110,21 +110,14 @@ fn svd_solve_rotation(
         h += source.column(i) * w * target.column(i).transpose();
     }
 
-    let svd_solution = SVD::new(h);
-    match svd_solution {
-        Some(svd) => {
-            let u = svd.u;
-            let mut v = svd.vt.transpose();
-            if u.determinant() * v.determinant() < 0.0 {
-                v.set_column(2, &(-v.column(2).clone_owned()));
-            }
-
-            v * u.transpose()
-        }
-        None => {
-            panic!("Unable to solve SVD for GNC");
-        }
+    let svd = SVD::new(h, true, true);
+    let u = svd.u.unwrap();
+    let mut v = svd.v_t.unwrap().transpose();
+    if u.determinant() * v.determinant() < 0.0 {
+        v.set_column(2, &(-v.column(2).clone_owned()));
     }
+
+    v * u.transpose()
 }
 
 // adaptation of https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
@@ -165,22 +158,15 @@ fn svd_solve_rotation_translation(
 
     let h = source_centered * w_diag * target_centered.transpose();
 
-    let svd_solution = SVD::new(h);
-    match svd_solution {
-        Some(svd) => {
-            let u = svd.u;
-            let mut v = svd.vt.transpose();
-            if u.determinant() * v.determinant() < 0.0 {
-                v.set_column(2, &(-v.column(2).clone_owned()));
-            }
-            let rotation = v * u.transpose();
-            let translation = target_centroid - rotation * source_centroid;
-            (rotation, translation)
-        }
-        None => {
-            panic!("Unable to solve SVD for GNC");
-        }
+    let svd = SVD::new(h, true, true);
+    let u = svd.u.unwrap();
+    let mut v = svd.v_t.unwrap().transpose();
+    if u.determinant() * v.determinant() < 0.0 {
+        v.set_column(2, &(-v.column(2).clone_owned()));
     }
+    let rotation = v * u.transpose();
+    let translation = target_centroid - rotation * source_centroid;
+    (rotation, translation)
 }
 
 #[cfg(test)]
@@ -189,8 +175,7 @@ mod tests {
     use std::f64::consts::FRAC_PI_4;
 
     use all_asserts::assert_le;
-    use nalgebra::distance;
-    use rand::{Rng, thread_rng};
+    use rand::Rng;
 
     use super::*;
 
@@ -204,7 +189,7 @@ mod tests {
             max_iterations: 100,
             cost_threshold: 1e-6,
         };
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         let source_points: Vec<_> = (0..num_points)
             .map(|_| Point::new(rng.random(), rng.random(), rng.random()))
             .collect();
