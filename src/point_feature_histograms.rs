@@ -1,6 +1,7 @@
 use std::fmt::format;
 
 use nalgebra::{Vector3, distance, distance_squared};
+use rayon::prelude::*;
 
 use crate::{prelude::*, query::PointQuery};
 
@@ -92,42 +93,45 @@ pub fn get_fastest_point_feature_histogram(
         histogram_point_indices_rev[index] = Some(spf_index);
     }
 
-    let mut fpf_histograms = vec![];
-    for (spf_index, &index) in histogram_point_indices.iter().enumerate() {
-        let point = points[index];
-        let mut fpf_histogram = spf_histograms[spf_index];
+    let fpf_histograms = histogram_point_indices
+        .par_iter()
+        .enumerate()
+        .map(|(spf_index, &index)| {
+            let point = points[index];
+            let mut fpf_histogram = spf_histograms[spf_index];
 
-        for neighbor in query.locate_within_distance(point.into(), sqr_radius) {
-            let neighbor_index = neighbor.data as usize;
-            if normals[neighbor_index].is_none() || index == neighbor_index {
-                continue;
+            for neighbor in query.locate_within_distance(point.into(), sqr_radius) {
+                let neighbor_index = neighbor.data as usize;
+                if normals[neighbor_index].is_none() || index == neighbor_index {
+                    continue;
+                }
+                let neighbor_point = (*neighbor.geom()).into();
+                let distance = distance_squared(&point, &neighbor_point);
+                let inv_omega = if distance < 1e-6 {
+                    0.0
+                } else {
+                    1.0 / (distance + 1e-6)
+                };
+                let neigbour_spf_histogram =
+                    spf_histograms[histogram_point_indices_rev[neighbor_index].unwrap()];
+
+                for (hist_index, value) in neigbour_spf_histogram.iter().enumerate() {
+                    fpf_histogram[hist_index] += value * inv_omega;
+                }
             }
-            let neighbor_point = (*neighbor.geom()).into();
-            let distance = distance_squared(&point, &neighbor_point);
-            let inv_omega = if distance < 1e-6 {
-                0.0
-            } else {
-                1.0 / (distance + 1e-6)
-            };
-            let neigbour_spf_histogram =
-                spf_histograms[histogram_point_indices_rev[neighbor_index].unwrap()];
+            let histogram_sums: [f64; 3] = std::array::from_fn(|i| {
+                fpf_histogram[i * HISTOGRAM_NUM_BINS..(i + 1) * HISTOGRAM_NUM_BINS]
+                    .iter()
+                    .sum::<f64>()
+            });
+            let inv_sums = histogram_sums.map(|s| if s.abs() < 1e-6 { 0.0 } else { 100.0 / s });
 
-            for (hist_index, value) in neigbour_spf_histogram.iter().enumerate() {
-                fpf_histogram[hist_index] += value * inv_omega;
+            for (i, item) in fpf_histogram.iter_mut().enumerate() {
+                *item *= inv_sums[i / HISTOGRAM_NUM_BINS];
             }
-        }
-        let histogram_sums: [f64; 3] = std::array::from_fn(|i| {
-            fpf_histogram[i * HISTOGRAM_NUM_BINS..(i + 1) * HISTOGRAM_NUM_BINS]
-                .iter()
-                .sum::<f64>()
-        });
-        let inv_sums = histogram_sums.map(|s| if s.abs() < 1e-6 { 0.0 } else { 100.0 / s });
-
-        for (i, item) in fpf_histogram.iter_mut().enumerate() {
-            *item *= inv_sums[i / HISTOGRAM_NUM_BINS];
-        }
-        fpf_histograms.push(fpf_histogram);
-    }
+            fpf_histogram
+        })
+        .collect::<Vec<_>>();
 
     (fpf_histograms, histogram_point_indices)
 }
