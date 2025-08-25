@@ -15,7 +15,7 @@ pub fn correspondance_graph_pruning(
     //       petgraph supports it: https://web.archive.org/web/20240824094053/
     //       https://docs.rs/petgraph/latest/petgraph/csr/struct.Csr.html
     let mut correspondance_graph = Graph::<(u64, u64), (), Undirected>::new_undirected();
-    debug!("Correspondances: {:?}", correspondance);
+    // debug!("Correspondances: {:?}", correspondance);
     let node_indexes: Vec<_> = correspondance
         .iter()
         .map(|&corr| correspondance_graph.add_node(corr))

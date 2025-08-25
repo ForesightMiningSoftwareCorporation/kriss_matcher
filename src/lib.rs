@@ -152,34 +152,7 @@ impl KrissMatcher {
         } else {
             (source, target)
         };
-        /*
-               let source = read_to_string("tgt_points.txt")
-                   .unwrap()
-                   .lines()
-                   .map(|line| {
-                       let mut parts = line.split_whitespace().map(|s| s.parse::<f64>().unwrap());
-                       Point::new(
-                           parts.next().unwrap(),
-                           parts.next().unwrap(),
-                           parts.next().unwrap(),
-                       )
-                   })
-                   .collect::<Vec<_>>();
-               let target = read_to_string("src_points.txt")
-                   .unwrap()
-                   .lines()
-                   .map(|line| {
-                       let mut parts = line.split_whitespace().map(|s| s.parse::<f64>().unwrap());
-                       Point::new(
-                           parts.next().unwrap(),
-                           parts.next().unwrap(),
-                           parts.next().unwrap(),
-                       )
-                   })
-                   .collect::<Vec<_>>();
-               let source = &source;
-               let target = &target;
-        */
+
         println!("Building queries");
         let start = Instant::now();
         let source_query = create_point_query(source);
@@ -198,23 +171,6 @@ impl KrissMatcher {
             normal_search_radius,
             config.max_linearity,
         );
-        /*
-        let source_text = source_normals.iter().enumerate().map(|(i, n)| {
-            if let Some(n) = n {
-                format!("{} {} {} {}", i, n.x, n.y, n.z)
-            } else {
-                format!("{} nan nan nan", i)
-            }
-        });
-        std::fs::write(
-            "source_normals.txt",
-            source_text.collect::<Vec<_>>().join("\n"),
-        )
-        .unwrap();
-
-        let source_normals = read_normals_from_file("normals_3896.txt");
-
-        */
 
         println!("Elapsed: {:?}", start.elapsed());
         println!("calculating target normals");
@@ -227,24 +183,6 @@ impl KrissMatcher {
         );
         println!("Elapsed: {:?}", start.elapsed());
 
-        /*
-               let target_text = target_normals.iter().enumerate().map(|(i, n)| {
-                   if let Some(n) = n {
-                       format!("{} {} {} {}", i, n.x, n.y, n.z)
-                   } else {
-                       format!("{} nan nan nan", i)
-                   }
-               });
-               std::fs::write(
-                   "target_normals.txt",
-                   target_text.collect::<Vec<_>>().join("\n"),
-               )
-               .unwrap();
-
-               let target_normals = read_normals_from_file("normals_1923.txt");
-
-        */
-
         let fpfh_search_radius = config.fpfh_radius_gain * config.voxel_size;
 
         println!("calculating histograms");
@@ -255,30 +193,8 @@ impl KrissMatcher {
             &source_normals,
             fpfh_search_radius,
         );
-        let source = source_point_indices
-            .iter()
-            .map(|i| source[*i])
-            .collect::<Vec<_>>();
-        let source = &source;
-        let source_point_indices: Vec<usize> = (0..source.len()).collect();
         println!("Elapsed (Source): {:?}", start.elapsed());
-        // std::fs::write(
-        //     "keypoints_src_gen.txt",
-        //     source_feature_histograms
-        //         .iter()
-        //         .zip(source_point_indices.iter())
-        //         .map(|(h, i)| {
-        //             let h_str = h
-        //                 .iter()
-        //                 .map(|v| (*v as f32).to_string())
-        //                 .collect::<Vec<_>>()
-        //                 .join(" ");
-        //             format!("{} {}", i, h_str)
-        //         })
-        //         .collect::<Vec<_>>()
-        //         .join("\n"),
-        // )
-        // .unwrap();
+
         let start = Instant::now();
         let (target_feature_histograms, target_point_indices) = get_fastest_point_feature_histogram(
             target,
@@ -286,38 +202,9 @@ impl KrissMatcher {
             &target_normals,
             fpfh_search_radius,
         );
-        let target = target_point_indices
-            .iter()
-            .map(|i| target[*i])
-            .collect::<Vec<_>>();
-        let target = &target;
-        let target_point_indices: Vec<usize> = (0..target.len()).collect();
         println!("Elapsed (Target): {:?}", start.elapsed());
 
-        // let (source, source_feature_histograms) = read_file_for_points("keypoints_tgt.txt");
-        // let (target, target_feature_histograms) = read_file_for_points("keypoints_src.txt");
-        // let source_point_indices: Vec<usize> = (0..source.len()).collect();
-        // let target_point_indices: Vec<usize> = (0..target.len()).collect();
-        // let source = &source;
-        // let target = &target;
-
-        /*
-        for i in 0..100 {
-            println!(
-                "Difference: {}",
-                nalgebra::distance(&source[i], &source2[i])
-            );
-            println!(
-                "Histogram difference: {}",
-                source_feature_histograms[i]
-                    .iter()
-                    .zip(source_feature_histograms2[i].iter())
-                    .map(|(a, b)| (a - b).abs())
-                    .sum::<f64>()
-            );
-        } */
-
-        println!("preforming mutual matching");
+        println!("performing mutual matching");
 
         let start = Instant::now();
         // ROBINMatching::match
@@ -333,9 +220,8 @@ impl KrissMatcher {
             "found {} mutualy matched correspondances",
             points_correspondances.len()
         );
-        // probably config.robin_noise_bound_gain?
         let distance_noise_threshold = config.robin_noise_bound_gain * config.voxel_size;
-        println!("prunning graph");
+        println!("pruning graph");
         let start = Instant::now();
         let filtered_correspondances = correspondance_graph_pruning(
             &points_correspondances,
@@ -358,24 +244,6 @@ impl KrissMatcher {
 
         let mut source_filtered_points: Vec<Point> = Vec::new();
         let mut target_filtered_points: Vec<Point> = Vec::new();
-
-        /*let file =
-            read_to_string("correspondences.txt").expect("Failed to read correspondences file");
-        for line in file.lines() {
-            let mut parts = line.split_whitespace().map(|s| s.parse::<f64>().unwrap());
-            let source_point = Point::new(
-                parts.next().unwrap(),
-                parts.next().unwrap(),
-                parts.next().unwrap(),
-            );
-            let target_point = Point::new(
-                parts.next().unwrap(),
-                parts.next().unwrap(),
-                parts.next().unwrap(),
-            );
-            source_filtered_points.push(source_point);
-            target_filtered_points.push(target_point);
-        }*/
 
         for (source_point_id, target_point_id) in filtered_correspondances.iter() {
             source_filtered_points.push(source[*source_point_id as usize]);

@@ -114,7 +114,7 @@ fn mutual_matching_a(
             let ratio = distances[0] / distances[1];
             // distances[0] > SQR_THR_DIST ||
             // results in it overpruning
-            if ratio > THR_RATIO_TEST || !ratio.is_finite() {
+            if distances[0] > SQR_THR_DIST || ratio > THR_RATIO_TEST || !ratio.is_finite() {
                 return f64::INFINITY;
             }
             let nearest_source_index = source_points[0].0.data as usize;
