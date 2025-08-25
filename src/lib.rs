@@ -1,6 +1,6 @@
 use nalgebra::{Isometry3, Matrix3, UnitQuaternion, Vector3};
-use std::fs::read_to_string;
-use std::time::Instant;
+use std::fmt::Display;
+use std::time::{Duration, Instant};
 
 use crate::downsample::downsample_points;
 use crate::feature_matching::mutual_matching;
@@ -86,6 +86,7 @@ pub struct RegistrationSolution {
     pub valid: bool,
     pub translation: Vector3<f64>,
     pub rotation: Matrix3<f64>,
+    pub timings: Timings,
 }
 impl RegistrationSolution {
     pub fn as_isometry(&self) -> Result<Isometry3<f64>, Isometry3<f64>> {
@@ -97,40 +98,49 @@ impl RegistrationSolution {
     }
 }
 
-fn read_file_for_points(path: &str) -> (Vec<Point>, Vec<Histogram>) {
-    let file = read_to_string(path).unwrap();
-    let mut points = vec![];
-    let mut histograms = vec![];
-    for line in file.lines() {
-        let mut parts = line.split_whitespace().map(|s| s.parse::<f64>().unwrap());
-        let point = Point::new(
-            parts.next().unwrap(),
-            parts.next().unwrap(),
-            parts.next().unwrap(),
-        );
-        let histogram = std::array::from_fn(|_| parts.next().unwrap());
-        points.push(point);
-        histograms.push(histogram);
-    }
-    (points, histograms)
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Timings {
+    pub query_building: [Duration; 2],
+    pub normal_estimation: [Duration; 2],
+    pub histogram_computation: [Duration; 2],
+    pub mutual_matching: Duration,
+    pub graph_pruning: Duration,
+    pub gnc_solving: Duration,
+    pub total: Duration,
+    pub starting_correspondences: usize,
+    pub pruned_correspondences: usize,
+    pub gnc_iterations: usize,
 }
-
-fn read_normals_from_file(path: &str) -> Vec<Option<Vector3<f64>>> {
-    let file = read_to_string(path).unwrap();
-    file.lines()
-        .map(|line| {
-            let mut parts = line.split_whitespace().map(|s| s.parse::<f64>().unwrap());
-            let _index = parts.next().unwrap();
-            let x = parts.next().unwrap();
-            let y = parts.next().unwrap();
-            let z = parts.next().unwrap();
-            if x.is_nan() || y.is_nan() || z.is_nan() {
-                None
-            } else {
-                Some(Vector3::new(x, y, z))
-            }
-        })
-        .collect::<Vec<_>>()
+impl Display for Timings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Timings:
+  Query Building: Source - {:?}, Target - {:?}
+  Normal Estimation: Source - {:?}, Target - {:?}
+  Histogram Computation: Source - {:?}, Target - {:?}
+  Mutual Matching: {:?}
+  Graph Pruning: {:?}
+  GNC Solving: {:?}
+  Total: {:?}
+  Starting Correspondences: {}
+  Pruned Correspondences: {}
+  GNC Solver Iterations: {}",
+            self.query_building[0],
+            self.query_building[1],
+            self.normal_estimation[0],
+            self.normal_estimation[1],
+            self.histogram_computation[0],
+            self.histogram_computation[1],
+            self.mutual_matching,
+            self.graph_pruning,
+            self.gnc_solving,
+            self.total,
+            self.starting_correspondences,
+            self.pruned_correspondences,
+            self.gnc_iterations,
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -139,6 +149,9 @@ pub struct KrissMatcher {
 }
 impl KrissMatcher {
     pub fn estimate(&mut self, source: &[Point], target: &[Point]) -> RegistrationSolution {
+        let mut timings = Timings::default();
+        let start_total = Instant::now();
+
         let config = self.config;
         let source_vec;
         let target_vec;
@@ -153,17 +166,15 @@ impl KrissMatcher {
             (source, target)
         };
 
-        println!("Building queries");
         let start = Instant::now();
         let source_query = create_point_query(source);
-        println!("Elapsed (source): {:?}", start.elapsed());
+        timings.query_building[0] = start.elapsed();
         let start = Instant::now();
         let target_query = create_point_query(target);
-        println!("Elapsed (target): {:?}", start.elapsed());
+        timings.query_building[1] = start.elapsed();
 
         let normal_search_radius = config.normal_radius_gain * config.voxel_size;
 
-        println!("calculating source normals");
         let start = Instant::now();
         let source_normals = estimate_normals(
             source,
@@ -171,9 +182,7 @@ impl KrissMatcher {
             normal_search_radius,
             config.max_linearity,
         );
-
-        println!("Elapsed: {:?}", start.elapsed());
-        println!("calculating target normals");
+        timings.normal_estimation[0] = start.elapsed();
         let start = Instant::now();
         let target_normals = estimate_normals(
             target,
@@ -181,11 +190,10 @@ impl KrissMatcher {
             normal_search_radius,
             config.max_linearity,
         );
-        println!("Elapsed: {:?}", start.elapsed());
+        timings.normal_estimation[1] = start.elapsed();
 
         let fpfh_search_radius = config.fpfh_radius_gain * config.voxel_size;
 
-        println!("calculating histograms");
         let start = Instant::now();
         let (source_feature_histograms, source_point_indices) = get_fastest_point_feature_histogram(
             source,
@@ -193,8 +201,7 @@ impl KrissMatcher {
             &source_normals,
             fpfh_search_radius,
         );
-        println!("Elapsed (Source): {:?}", start.elapsed());
-
+        timings.histogram_computation[0] = start.elapsed();
         let start = Instant::now();
         let (target_feature_histograms, target_point_indices) = get_fastest_point_feature_histogram(
             target,
@@ -202,9 +209,7 @@ impl KrissMatcher {
             &target_normals,
             fpfh_search_radius,
         );
-        println!("Elapsed (Target): {:?}", start.elapsed());
-
-        println!("performing mutual matching");
+        timings.histogram_computation[1] = start.elapsed();
 
         let start = Instant::now();
         // ROBINMatching::match
@@ -215,13 +220,10 @@ impl KrissMatcher {
             &target_point_indices,
             config.num_max_corr,
         );
-        println!("Elapsed: {:?}", start.elapsed());
-        println!(
-            "found {} mutualy matched correspondances",
-            points_correspondances.len()
-        );
+        timings.mutual_matching = start.elapsed();
+        timings.starting_correspondences = points_correspondances.len();
+
         let distance_noise_threshold = config.robin_noise_bound_gain * config.voxel_size;
-        println!("pruning graph");
         let start = Instant::now();
         let filtered_correspondances = correspondance_graph_pruning(
             &points_correspondances,
@@ -229,11 +231,8 @@ impl KrissMatcher {
             target,
             distance_noise_threshold,
         );
-        println!("Elapsed: {:?}", start.elapsed());
-        println!(
-            "Pruned to {} correspondances",
-            filtered_correspondances.len()
-        );
+        timings.graph_pruning = start.elapsed();
+        timings.pruned_correspondences = filtered_correspondances.len();
 
         let gnc_params = GNCSolverParams {
             gnc_factor: 1.4,
@@ -250,21 +249,23 @@ impl KrissMatcher {
             target_filtered_points.push(target[*target_point_id as usize]);
         }
 
-        println!("solving rotation/translation");
         let start = Instant::now();
         // See GncSolver.cpp: RobustRegistrationSolver::solve
-        let (rotation, translation, inliers) = solve_rotation_translation(
+        let (rotation, translation, inliers, gnc_iterations) = solve_rotation_translation(
             &gnc_params,
             &source_filtered_points,
             &target_filtered_points,
         );
-        println!("Elapsed: {:?}", start.elapsed());
+        timings.gnc_solving = start.elapsed();
+        timings.gnc_iterations = gnc_iterations;
 
-        // TODO: Failed if there are no inliers.
+        timings.total = start_total.elapsed();
+
         RegistrationSolution {
             valid: inliers.iter().any(|&v| v),
             rotation,
             translation,
+            timings,
         }
     }
 }

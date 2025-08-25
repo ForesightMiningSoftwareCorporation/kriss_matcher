@@ -1,4 +1,3 @@
-use log::debug;
 use nalgebra::distance;
 use petgraph::{Graph, Undirected};
 use rustworkx_core::connectivity::core_number;
@@ -6,7 +5,7 @@ use rustworkx_core::connectivity::core_number;
 use crate::prelude::*;
 
 pub fn correspondance_graph_pruning(
-    correspondance: &Vec<(u64, u64)>,
+    correspondance: &[(u64, u64)],
     source: &[Point],
     target: &[Point],
     distance_noise_threshold: f64,

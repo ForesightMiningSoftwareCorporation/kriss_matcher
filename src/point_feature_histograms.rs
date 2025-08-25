@@ -1,6 +1,4 @@
-use std::fmt::format;
-
-use nalgebra::{Vector3, distance, distance_squared};
+use nalgebra::{Vector3, distance_squared};
 use rayon::prelude::*;
 
 use crate::{prelude::*, query::PointQuery};

@@ -1,5 +1,5 @@
 use nalgebra::linalg::SVD;
-use nalgebra::{Matrix3, Vector3, distance_squared};
+use nalgebra::{Matrix3, Vector3};
 use rstar::primitives::GeomWithData;
 
 use crate::prelude::*;

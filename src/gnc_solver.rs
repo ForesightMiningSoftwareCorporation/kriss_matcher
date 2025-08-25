@@ -23,7 +23,7 @@ pub fn solve_rotation_translation(
     params: &GNCSolverParams,
     source_points: &[Point],
     target_points: &[Point],
-) -> (Matrix3<f64>, Vector3<f64>, Vec<bool>) {
+) -> (Matrix3<f64>, Vector3<f64>, Vec<bool>, usize) {
     let source = convert_points_to_matrix(source_points);
     let target = convert_points_to_matrix(target_points);
 
@@ -40,7 +40,10 @@ pub fn solve_rotation_translation(
     let mut weights: DVector<f64> = DVector::from_vec(vec![1.0_f64; match_size]);
     let mut rotation = Matrix3::<f64>::identity();
     let mut translation = Vector3::<f64>::zeros();
-    for i in 0..=params.max_iterations {
+
+    let mut i = 0;
+    while i <= params.max_iterations {
+        i += 1;
         if true {
             (rotation, translation) = svd_solve_rotation_translation(&source, &target, &weights);
         } else {
@@ -62,9 +65,6 @@ pub fn solve_rotation_translation(
                 .unwrap();
             mu = 1.0 / (2.0 * max_residual / noise_bound_sq - 1.0);
             if mu <= 0.0 {
-                println!(
-                    "GNC-TLS terminated because maximum residual at initialization is very small."
-                );
                 break;
             }
         }
@@ -87,9 +87,6 @@ pub fn solve_rotation_translation(
         mu *= params.gnc_factor;
         prev_cost = cost;
         if cost_diff < params.cost_threshold {
-            println!(
-                "GNC-TLS solver terminated due to cost convergence. Cost diff: {cost_diff}, iteration: {i}"
-            );
             break;
         }
     }
@@ -97,7 +94,7 @@ pub fn solve_rotation_translation(
     for j in 0..weights.ncols() {
         inliers[j] = weights[j] >= 0.5;
     }
-    (rotation, translation, inliers)
+    (rotation, translation, inliers, i)
 }
 
 fn svd_solve_rotation(
@@ -214,7 +211,7 @@ mod tests {
             })
             .collect();
 
-        let (solved_rotation, solved_translation, inliers) =
+        let (solved_rotation, solved_translation, inliers, _) =
             solve_rotation_translation(&gnc_parameters, &source_points, &target_points);
 
         let rotation_diff = (solved_rotation - rotation).norm();

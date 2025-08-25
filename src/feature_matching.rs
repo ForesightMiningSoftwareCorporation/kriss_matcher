@@ -1,7 +1,5 @@
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Instant;
 
-use ahash::HashMap;
 #[cfg(feature = "hora")]
 use hora::{
     core::{ann_index::ANNIndex, metrics::Metric, node::Node},
@@ -93,15 +91,8 @@ fn mutual_matching_a(
     target_point_indices: &[usize],
     max_number_of_correspondances: usize,
 ) -> Vec<(u64, u64)> {
-    println!(
-        "Starting matching. Source length: {}, Target length: {}",
-        source_feature_histograms.len(),
-        target_feature_histograms.len()
-    );
     let source_query = make_query_from_histograms(source_feature_histograms);
     let target_query = make_query_from_histograms(target_feature_histograms);
-
-    let start = Instant::now();
 
     let source_to_target = std::iter::repeat_with(|| AtomicU32::new(u32::MAX))
         .take(source_feature_histograms.len())
@@ -139,10 +130,6 @@ fn mutual_matching_a(
         })
         .collect::<Vec<_>>();
 
-    println!("Elapsed (matching): {:?}", start.elapsed());
-
-    let start = Instant::now();
-
     let mut matched_pairs = Vec::with_capacity(source_feature_histograms.len());
     for (target_index, source_index) in target_to_source.iter().enumerate() {
         let target_index = target_index as u32;
@@ -155,9 +142,6 @@ fn mutual_matching_a(
         }
     }
 
-    println!("Number of matched pairs: {}", matched_pairs.len());
-
-    println!("Elapsed (pairing): {:?}", start.elapsed());
     matched_pairs.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
 
     matched_pairs
@@ -180,15 +164,8 @@ fn mutual_matching_a(
     target_point_indices: &[usize],
     max_number_of_correspondances: usize,
 ) -> Vec<(u64, u64)> {
-    println!(
-        "Starting matching. Source length: {}, Target length: {}",
-        source_feature_histograms.len(),
-        target_feature_histograms.len()
-    );
     let source_query = make_query_from_histograms(source_feature_histograms);
     let target_query = make_query_from_histograms(target_feature_histograms);
-
-    let start = Instant::now();
 
     let source_to_target = std::iter::repeat_with(|| AtomicU32::new(u32::MAX))
         .take(source_feature_histograms.len())
@@ -223,10 +200,6 @@ fn mutual_matching_a(
         })
         .collect::<Vec<_>>();
 
-    println!("Elapsed (matching): {:?}", start.elapsed());
-
-    let start = Instant::now();
-
     let mut matched_pairs = Vec::with_capacity(source_feature_histograms.len());
     for (target_index, source_index) in target_to_source.iter().enumerate() {
         let target_index = target_index as u32;
@@ -239,9 +212,6 @@ fn mutual_matching_a(
         }
     }
 
-    println!("Number of matched pairs: {}", matched_pairs.len());
-
-    println!("Elapsed (pairing): {:?}", start.elapsed());
     matched_pairs.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
 
     matched_pairs
@@ -268,15 +238,6 @@ fn mutual_matching_b(
     let source_query = make_query_from_histograms(source_feature_histograms);
     let target_query = make_query_from_histograms(target_feature_histograms);
 
-    // let start = Instant::now();
-    // let source_to_target = match_points(source_feature_histograms, &target_query);
-    // println!("Elapsed (source to target): {:?}", start.elapsed());
-    // let start = Instant::now();
-    // let target_to_source = match_points(target_feature_histograms, &source_query);
-    // println!("Elapsed (target to source): {:?}", start.elapsed());
-
-    let start = Instant::now();
-
     let mut correspondance_with_ratio = source_feature_histograms
         .par_iter()
         .enumerate()
@@ -294,28 +255,7 @@ fn mutual_matching_b(
         })
         .collect::<Vec<_>>();
 
-    // println!("source to target: {source_to_target:?}");
-    // println!("target to source: {target_to_source:?}");
-    // for (&source_index, &target_index) in &source_to_target {
-    //     if let Some(&matched_index) = target_to_source.get(&target_index) {
-    //         if matched_index == source_index {
-    //             if let Some(source_histogram) =
-    //                 source_feature_histograms[source_index as usize].as_ref()
-    //             {
-    //                 let ratio_opt = descriptor_distance_ratio(source_histogram, &target_query);
-    //                 if let Some(ratio) = ratio_opt {
-    //                     correspondance_with_ratio.push((source_index, target_index, ratio));
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-    println!("Elapsed (matching): {:?}", start.elapsed());
-    // TODO: Can use a binary heap here to avoid doing a full sort.
-    // https://users.rust-lang.org/t/solved-best-way-to-find-largest-three-values-in-unsorted-slice/34754/6
-    let start = Instant::now();
     correspondance_with_ratio.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
-    println!("Elapsed (sorting): {:?}", start.elapsed());
 
     correspondance_with_ratio
         .into_iter()

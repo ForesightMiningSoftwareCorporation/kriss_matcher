@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use ahash::HashSet;
 use nalgebra::Vector3;
 use rayon::prelude::*;
@@ -25,19 +23,7 @@ fn get_point(index: u64) -> Vector3<f64> {
 }
 
 pub fn downsample_points(points: &[Point], voxel_size: f64) -> Vec<Point> {
-    println!(
-        "Downsampling: {} points, voxel size: {}",
-        points.len(),
-        voxel_size
-    );
-    let start = Instant::now();
-    let result = downsample_points_a(points, voxel_size);
-    println!(
-        "Finished downsampling in {:?}, {} points",
-        start.elapsed(),
-        result.len()
-    );
-    result
+    downsample_points_a(points, voxel_size)
 }
 
 #[allow(dead_code)]
